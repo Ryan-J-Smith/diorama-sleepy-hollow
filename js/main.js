@@ -144,6 +144,10 @@ async function main() {
 
   const timer = new THREE.Timer();
   timer.connect(document);
+  // The title card hides the scene completely, so after the first frame
+  // (which compiles the shaders and uploads the textures) none are drawn
+  // until the case is opened; the scene itself keeps running as before.
+  let draw = true;
   renderer.setAnimationLoop((now) => {
     timer.update(now);
     const realDt = Math.min(timer.getDelta(), 0.1);
@@ -152,12 +156,16 @@ async function main() {
     sim.time += dt;
     for (const u of world.updaters) u(dt, sim.time, sim);
     controls.update(realDt);
-    composer.render();
+    if (draw) composer.render();
   });
 
-  // compile shaders before revealing
+  // compile shaders before revealing, for the target the scene is drawn into
+  // (compiled for the screen, every one would be an unused variant)
+  renderer.setRenderTarget(composer.renderTarget1);
   renderer.compile(scene, camera);
+  renderer.setRenderTarget(null);
   await nextFrame();
+  draw = false;
 
   // Browsers only allow sound after a click or tap, so the visitor "opens the
   // case" to reveal the diorama and start the music.
@@ -179,6 +187,7 @@ async function main() {
   musicChoice.hidden = false;
   enter.focus();
   await new Promise((resolve) => enter.addEventListener('click', resolve, { once: true }));
+  draw = true;
   music.start();
   setupUI(world);
   // The turntable has been turning the case behind the title card all this

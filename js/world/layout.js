@@ -100,37 +100,61 @@ export const BUILDINGS = [
 ];
 for (const b of BUILDINGS) b.yaw = Math.atan2(b.face[0], b.face[1]);
 
-/** Spatial hash over a set of 2D sample points for nearest-point queries. */
+/**
+ * Spatial grid over a set of 2D sample points for nearest-point queries. The
+ * cells cover just the points' extent, each cell's points stored together in
+ * index order: the terrain makes tens of thousands of queries while loading,
+ * and a flat grid is much quicker to probe than a hash map.
+ */
 class PointIndex {
   constructor(xs, zs, cell = 0.5) {
     this.xs = xs;
     this.zs = zs;
     this.cell = cell;
-    this.map = new Map();
-    for (let i = 0; i < xs.length; i++) {
-      const k = this.key(Math.floor(xs[i] / cell), Math.floor(zs[i] / cell));
-      if (!this.map.has(k)) this.map.set(k, []);
-      this.map.get(k).push(i);
+    const n = xs.length;
+    const cxs = new Int32Array(n);
+    const czs = new Int32Array(n);
+    let cx0 = Infinity;
+    let cx1 = -Infinity;
+    let cz0 = Infinity;
+    let cz1 = -Infinity;
+    for (let i = 0; i < n; i++) {
+      cxs[i] = Math.floor(xs[i] / cell);
+      czs[i] = Math.floor(zs[i] / cell);
+      cx0 = Math.min(cx0, cxs[i]);
+      cx1 = Math.max(cx1, cxs[i]);
+      cz0 = Math.min(cz0, czs[i]);
+      cz1 = Math.max(cz1, czs[i]);
     }
-  }
-
-  key(cx, cz) {
-    return (cx + 1000) * 4096 + (cz + 1000);
+    this.cx0 = n ? cx0 : 0;
+    this.cz0 = n ? cz0 : 0;
+    this.nx = n ? cx1 - cx0 + 1 : 0;
+    this.nz = n ? cz1 - cz0 + 1 : 0;
+    // cell c holds items[start[c]] .. items[start[c + 1] - 1]
+    const start = new Int32Array(this.nx * this.nz + 1);
+    for (let i = 0; i < n; i++) start[(czs[i] - this.cz0) * this.nx + (cxs[i] - this.cx0) + 1]++;
+    for (let c = 1; c < start.length; c++) start[c] += start[c - 1];
+    const next = start.slice();
+    this.items = new Int32Array(n);
+    for (let i = 0; i < n; i++) this.items[next[(czs[i] - this.cz0) * this.nx + (cxs[i] - this.cx0)]++] = i;
+    this.start = start;
   }
 
   nearest(x, z, maxR) {
+    const { xs, zs, nx, nz, start, items } = this;
     const r = Math.ceil(maxR / this.cell);
-    const cx = Math.floor(x / this.cell);
-    const cz = Math.floor(z / this.cell);
+    const cx = Math.floor(x / this.cell) - this.cx0;
+    const cz = Math.floor(z / this.cell) - this.cz0;
     let best = maxR * maxR;
     let bi = -1;
-    for (let dz = -r; dz <= r; dz++) {
-      for (let dx = -r; dx <= r; dx++) {
-        const list = this.map.get(this.key(cx + dx, cz + dz));
-        if (!list) continue;
-        for (const i of list) {
-          const ex = this.xs[i] - x;
-          const ez = this.zs[i] - z;
+    // row by row, as the cells are laid out; the first of equally near points wins
+    for (let gz = Math.max(0, cz - r); gz <= Math.min(nz - 1, cz + r); gz++) {
+      for (let gx = Math.max(0, cx - r); gx <= Math.min(nx - 1, cx + r); gx++) {
+        const c = gz * nx + gx;
+        for (let k = start[c]; k < start[c + 1]; k++) {
+          const i = items[k];
+          const ex = xs[i] - x;
+          const ez = zs[i] - z;
           const d2 = ex * ex + ez * ez;
           if (d2 < best) {
             best = d2;

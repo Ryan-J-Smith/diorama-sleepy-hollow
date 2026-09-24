@@ -26,24 +26,57 @@ export function createRenderer(canvas) {
   return renderer;
 }
 
+/**
+ * Only the scene render needs multisampling and depth; every pass after it
+ * draws a full-screen quad. So the scene always goes into the multisampled
+ * target and the passes write into a plain one, instead of the two targets
+ * swapping roles each frame (which kept a second multisampled target, with
+ * its own depth, and resolved it after every pass).
+ */
+class SceneComposer extends EffectComposer {
+  constructor(renderer, sceneTarget) {
+    super(renderer, sceneTarget);
+    this.renderTarget2.dispose();
+    this.renderTarget2 = new THREE.WebGLRenderTarget(sceneTarget.width, sceneTarget.height, {
+      type: THREE.HalfFloatType,
+      depthBuffer: false,
+    });
+  }
+
+  render(deltaTime) {
+    this.readBuffer = this.renderTarget1;
+    this.writeBuffer = this.renderTarget2;
+    super.render(deltaTime);
+  }
+}
+
 export function createComposer(renderer, scene, camera) {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
     type: THREE.HalfFloatType,
     samples: QUALITY.msaa,
     // for the mist pass: the multisampled depth is resolved into this texture
-    // along with the colour (the composer's second target gets its own copy)
+    // along with the colour
     depthTexture: new THREE.DepthTexture(size.x, size.y),
   });
-  const composer = new EffectComposer(renderer, target);
+  const composer = new SceneComposer(renderer, target);
   composer.addPass(new RenderPass(scene, camera));
   // ground mist, in linear HDR before bloom; switched on once the terrain
-  // exists. Phones march it at half resolution with fewer steps.
-  const mist = new MistPass(camera, QUALITY.mobile ? { steps: 8, half: true } : { steps: 10 });
+  // exists. Phones march it at half resolution with fewer steps, and so do
+  // screens at a pixel ratio of 2, where half resolution is still one march
+  // per CSS pixel, as on a standard screen.
+  const mist = new MistPass(camera, QUALITY.mobile ? { steps: 8, half: true } : { steps: 10, half: QUALITY.pixelRatio >= 2 });
   composer.addPass(mist);
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.5, 0.5, 0.95);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
+  // Given a target, the composer sizes its passes as if the target were in
+  // CSS pixels, so above a pixel ratio of 1 they start out too big (bloom and
+  // mist at pixel ratio² the pixels) until the first resize. Size everything
+  // from the CSS size now, exactly as a resize would, so high-DPI screens get
+  // the same bloom as everyone else from the first frame.
+  const css = renderer.getSize(new THREE.Vector2());
+  composer.setSize(css.x, css.y);
 
   const resize = () => {
     const w = window.innerWidth;
