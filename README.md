@@ -1,5 +1,7 @@
 # The Legend of Sleepy Hollow — a diorama
 
+[![The whole diorama in its glass case on a walnut base: a moonlit autumn village, cornfield, covered bridge and church on a hill, with the two riders racing past the cornfield](docs/preview.jpg)](https://ryan-j-smith.github.io/diorama-sleepy-hollow/)
+
 **[Open the diorama →](https://ryan-j-smith.github.io/diorama-sleepy-hollow/)**
 
 A moonlit autumn diorama of Washington Irving's *Legend of Sleepy Hollow*, sitting in a
@@ -10,8 +12,8 @@ stone bridge — with the Headless Horseman close behind, his burning head held 
 chase goes round and round the hollow all night.
 
 Everything is built in the browser with [three.js](https://threejs.org/): the models,
-textures and animation are generated in code, so there are no image or model files. The
-only asset is the music track.
+textures and animation are generated in code, so the site loads no image or model files.
+The only asset is the music track.
 
 ## Viewing it
 
