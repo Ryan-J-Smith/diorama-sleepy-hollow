@@ -181,7 +181,9 @@ async function main() {
   await new Promise((resolve) => enter.addEventListener('click', resolve, { once: true }));
   music.start();
   setupUI(world);
-  controls.idleTime = 0;
+  // The turntable has been turning the case behind the title card all this
+  // time, so start from the front however long the visitor lingered.
+  controls.reset(true);
   document.body.classList.add('ready');
   window.__diorama = world;
   if (QUALITY.mobile) document.body.classList.add('mobile');
