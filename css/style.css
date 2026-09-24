@@ -239,6 +239,27 @@ body.ready .loader { opacity: 0; visibility: hidden; }
 .loader.loaded .loader-bar,
 .loader.loaded .loader-step { display: none; }
 
+/* music choice under the enter button, so the sound is never a surprise */
+.enter-music {
+  display: block;
+  margin: 14px auto 0;
+  padding: 4px 10px;
+  border: 0;
+  background: transparent;
+  color: rgba(233, 220, 192, 0.72);
+  font-family: var(--serif);
+  font-size: 15px;
+  font-style: italic;
+  cursor: pointer;
+}
+.enter-music[hidden] { display: none; }
+.enter-music .note { font-style: normal; color: var(--gold); margin-right: 3px; }
+.enter-music .sep { color: rgba(233, 220, 192, 0.45); margin: 0 2px; }
+.enter-music .action { color: rgba(233, 220, 192, 0.45); text-decoration: underline; text-underline-offset: 3px; }
+.enter-music:hover .action, .enter-music:focus-visible .action { color: var(--gold); }
+.enter-music:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; border-radius: 4px; }
+.enter-music[aria-pressed="false"] .note { color: rgba(233, 220, 192, 0.35); }
+
 /* music volume */
 .controls .volume {
   -webkit-appearance: none;

@@ -21,8 +21,9 @@ only asset is the music track.
 | Look closer / step back | scroll | pinch |
 | Slide the view | right-drag | two-finger drag |
 
-When the page has loaded, press **Wind the clockwork** to open the case. Browsers only
-allow sound after a click, so this button is what starts the music.
+When the page has loaded, press **Wind the clockwork** to open the case. The diorama has
+soft background music; the switch just below the button shows whether it's on and lets
+you turn it off before anything plays. The choice is remembered for next time.
 
 The camera stays outside the glass. Buttons along the bottom:
 

@@ -82,6 +82,12 @@ export class Music {
     if (this.ctx && this.enabled) this.fadeTo(toGain(this.volume), 0.15);
   }
 
+  /** Remember whether music should play, without starting anything. */
+  setPreference(on) {
+    this.enabled = on;
+    writePref(PREF_KEY, on ? 'on' : 'off');
+  }
+
   setEnabled(on) {
     this.enabled = on;
     writePref(PREF_KEY, on ? 'on' : 'off');

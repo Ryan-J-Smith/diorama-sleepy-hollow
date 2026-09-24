@@ -131,7 +131,6 @@ async function main() {
   const controls = new CaseControls(camera, canvas);
   world.controls = controls;
   world.music = music;
-  setupUI(world);
 
   const timer = new THREE.Timer();
   timer.connect(document);
@@ -153,11 +152,25 @@ async function main() {
   // Browsers only allow sound after a click or tap, so the visitor "winds the
   // clockwork" to reveal the diorama and start the music.
   const enter = document.getElementById('enter');
+  // Let the visitor see (and change) the music choice before anything plays.
+  const musicChoice = document.getElementById('enter-music');
+  const showChoice = () => {
+    musicChoice.setAttribute('aria-pressed', music.enabled ? 'true' : 'false');
+    musicChoice.querySelector('.state').textContent = music.enabled ? 'Soft music on' : 'Music off';
+    musicChoice.querySelector('.action').textContent = music.enabled ? 'turn off' : 'turn on';
+  };
+  showChoice();
+  musicChoice.addEventListener('click', () => {
+    music.setPreference(!music.enabled);
+    showChoice();
+  });
   loader.classList.add('loaded');
   enter.hidden = false;
+  musicChoice.hidden = false;
   enter.focus();
   await new Promise((resolve) => enter.addEventListener('click', resolve, { once: true }));
   music.start();
+  setupUI(world);
   controls.idleTime = 0;
   document.body.classList.add('ready');
   window.__diorama = world;
