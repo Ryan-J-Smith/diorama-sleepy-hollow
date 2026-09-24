@@ -64,8 +64,12 @@ export const SPURS = [
 ];
 
 export const FIELD = { x0: -3.0, x1: 0.95, z0: -1.1, z1: 2.55 };
-export const CHURCHYARD = { x0: 6.72, x1: 9.2, z0: -2.3, z1: 1.8 };
-export const CHURCH_HILL = { x: 8.15, z: -0.3, top: 1.0, foot: 2.3, height: 0.85 };
+// The front (west) fence stands on the level ground beside the road; the
+// graveyard climbs the hill behind it.
+export const CHURCHYARD = { x0: 6.5, x1: 9.3, z0: -2.3, z1: 1.7 };
+// A lower hill set further back, so the climb from the road is a long gentle
+// slope rather than a bank.
+export const CHURCH_HILL = { x: 8.4, z: -0.3, top: 0.95, foot: 2.6, height: 0.62 };
 export const GNARLED_TREE = { x: 1.95, z: 4.72 };
 export const CLEARINGS = {
   scarecrow: { x: -1.0, z: 0.95 },
@@ -92,7 +96,7 @@ export const BUILDINGS = [
   { id: 'farmhouse', x: -3.85, z: -2.45, w: 1.45, d: 0.9, face: [0, 1] },
   { id: 'barn', x: -1.5, z: -2.3, w: 1.8, d: 1.15, face: [0, 1] },
   { id: 'school', x: -2.3, z: -4.95, w: 0.95, d: 0.7, face: [0, 1] },
-  { id: 'church', x: 8.15, z: -0.3, w: 1.45, d: 0.95, face: [0, 1] },
+  { id: 'church', x: 8.4, z: -0.3, w: 1.45, d: 0.95, face: [0, 1] },
 ];
 for (const b of BUILDINGS) b.yaw = Math.atan2(b.face[0], b.face[1]);
 
@@ -337,9 +341,14 @@ export class Layout {
   /** Ground height after the road has been graded (no pads or water). */
   _gradedHeight(x, z) {
     let h = naturalHeight(x, z);
-    const near = this.roadIndex.nearest(x, z, 1.2);
+    const near = this.roadIndex.nearest(x, z, 2.6);
     if (near.i >= 0) {
-      const w = 1 - smoothstep(ROAD_HALF + 0.05, ROAD_HALF + 0.65, near.d);
+      // Where the road is cut into rising ground, lay the bank back: the
+      // deeper the cut, the longer and gentler the slope, with a wandering
+      // edge so it never reads as a straight wall.
+      const rise = Math.max(0, h - this.roadY[near.i]);
+      const bank = 0.6 + 1.5 * Math.min(1, rise / 0.7) + 0.25 * perlin2(x * 1.6 + 3, z * 1.6);
+      const w = 1 - smoothstep(ROAD_HALF + 0.05, ROAD_HALF + 0.05 + bank, near.d);
       const rut = 0.012 * (1 - smoothstep(0, ROAD_HALF, near.d));
       h = lerp(h, this.roadY[near.i] - rut, w);
     }

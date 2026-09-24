@@ -350,7 +350,8 @@ function buildWater(world) {
   water.name = 'water';
   world.scene.add(water);
   world.addUpdater((dt, t) => {
-    normalMap.offset.set(t * 0.012, t * 0.035);
+    // ripples drift downstream (toward the front of the case), with the foam
+    normalMap.offset.set(t * 0.012, -t * 0.035);
   });
   return water;
 }
