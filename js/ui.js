@@ -1,10 +1,8 @@
-// Wires the small control bar and the fading interaction hint.
+// Wires the small control bar and the "exploring the diorama" help card.
 
 export function setupUI(world) {
   const { sim, controls } = world;
   const bar = document.getElementById('controls');
-  const hint = document.getElementById('hint');
-  const canvas = document.getElementById('scene');
 
   const setPressed = (btn, on) => btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   const button = (action) => bar.querySelector(`[data-action="${action}"]`);
@@ -81,14 +79,54 @@ export function setupUI(world) {
     }
   });
 
-  if (matchMedia('(pointer: coarse)').matches) {
-    hint.textContent = 'Drag to turn \u00b7 Pinch to look closer \u00b7 Two-finger drag to pan';
-  }
-  let hintTimer = setTimeout(() => hint.classList.add('gone'), 11000);
-  const dismiss = () => {
-    clearTimeout(hintTimer);
-    hintTimer = setTimeout(() => hint.classList.add('gone'), 1500);
-    canvas.removeEventListener('pointerdown', dismiss);
+  setupHelp(button('help'));
+}
+
+const HELP_KEY = 'sleepy-hollow-help';
+
+/**
+ * The help card: shown when the case first opens, hidden with "Got it" or the
+ * close button (and remembered), and reopened from the Help button or H key.
+ */
+function setupHelp(helpBtn) {
+  const help = document.getElementById('help');
+  if (matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch');
+
+  const show = () => {
+    help.hidden = false;
+    // next frame so the fade-in transition runs
+    requestAnimationFrame(() => help.classList.add('shown'));
+    helpBtn.setAttribute('aria-pressed', 'true');
   };
-  canvas.addEventListener('pointerdown', dismiss);
+  const hide = () => {
+    help.classList.remove('shown');
+    helpBtn.setAttribute('aria-pressed', 'false');
+    setTimeout(() => {
+      if (!help.classList.contains('shown')) help.hidden = true;
+    }, 600);
+    try {
+      localStorage.setItem(HELP_KEY, 'hidden');
+    } catch {
+      // storage unavailable: it will simply show again next visit
+    }
+  };
+  const toggle = () => (help.classList.contains('shown') ? hide() : show());
+
+  help.querySelector('.help-close').addEventListener('click', hide);
+  help.querySelector('.help-ok').addEventListener('click', hide);
+  helpBtn.addEventListener('click', toggle);
+  window.addEventListener('keydown', (e) => {
+    if (e.target instanceof HTMLInputElement) return;
+    if (e.key === 'Escape' && help.classList.contains('shown')) hide();
+    else if ((e.key === 'h' || e.key === 'H' || e.key === '?') && !(e.target instanceof HTMLButtonElement)) toggle();
+  });
+
+  let seen = null;
+  try {
+    seen = localStorage.getItem(HELP_KEY);
+  } catch {
+    seen = null;
+  }
+  // first visit: show it once the controls have faded in
+  if (seen !== 'hidden') setTimeout(show, 1400);
 }

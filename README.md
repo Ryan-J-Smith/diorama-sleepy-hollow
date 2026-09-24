@@ -33,6 +33,8 @@ The camera stays outside the glass. Buttons along the bottom:
 - **Music**: on or off (<kbd>M</kbd>), with a volume slider beside it (starts quiet)
 - **Reset**: goes back to the starting view (<kbd>R</kbd>)
 - **Fullscreen**
+- **Help**: shows the "Exploring the diorama" card again (<kbd>H</kbd>). It appears
+  on a first visit and stays hidden once dismissed.
 
 ## Running it locally
 
