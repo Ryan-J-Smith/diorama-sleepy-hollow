@@ -196,6 +196,15 @@ body.ready .loader { opacity: 0; visibility: hidden; }
   background: linear-gradient(90deg, var(--gold-dim), var(--ember));
   transition: width 0.3s ease;
 }
+/* while the scripts are still downloading, show an indeterminate shimmer */
+.loader:not(.started):not(.error) .loader-bar span {
+  width: 30%;
+  animation: loader-sweep 1.4s ease-in-out infinite;
+}
+@keyframes loader-sweep {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(340%); }
+}
 .loader-step {
   margin: 12px 0 0;
   font-size: 14px;

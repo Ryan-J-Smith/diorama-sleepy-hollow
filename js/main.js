@@ -30,14 +30,25 @@ const loaderStep = document.getElementById('loader-step');
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
+/**
+ * The plaque and signs are painted with the web font, so wait for it (up to a
+ * few seconds; offline it falls back to Georgia). The font stylesheet loads
+ * without blocking the page, so first wait for its @font-face rules to exist.
+ */
 async function waitForFonts() {
   if (!document.fonts) return;
+  const deadline = performance.now() + 3000;
+  const hasSheet = () => [...document.styleSheets].some((sheet) => (sheet.href || '').includes('fonts.googleapis'));
+  while (!hasSheet() && performance.now() < deadline) await new Promise((r) => setTimeout(r, 50));
   const fonts = ['96px "IM Fell English SC"', 'italic 46px "IM Fell English"', '40px "IM Fell English"'];
   const load = Promise.all(fonts.map((f) => document.fonts.load(f).catch(() => null)));
-  await Promise.race([load, new Promise((r) => setTimeout(r, 2500))]);
+  await Promise.race([load, new Promise((r) => setTimeout(r, Math.max(300, deadline - performance.now())))]);
 }
 
 async function main() {
+  // the scripts have arrived: switch the loader from "downloading" to progress
+  clearTimeout(window.__loaderSlow);
+  loader.classList.add('started');
   const canvas = document.getElementById('scene');
   const music = new Music(); // starts downloading the track right away
   const renderer = createRenderer(canvas);

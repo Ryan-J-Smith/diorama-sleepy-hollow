@@ -9,7 +9,9 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='36' r='22' fill='%23e07a1f'/%3E%3Crect x='29' y='8' width='6' height='10' rx='2' fill='%23553b1b'/%3E%3Cpath d='M20 32l6-6 6 6zM32 32l6-6 6 6z' fill='%23ffd36b'/%3E%3Cpath d='M20 44q12 8 24 0l-4 2-4-3-4 3-4-3-4 3z' fill='%23ffd36b'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&display=swap" rel="stylesheet">
+  <!-- load the web font without blocking the first paint -->
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&display=swap"></noscript>
   <link rel="stylesheet" href="css/style.css">
   <script type="importmap">
     {
@@ -19,6 +21,17 @@
       }
     }
   </script>
+  <!-- fetch the heavy modules in parallel rather than one import at a time -->
+  <link rel="modulepreload" href="vendor/three/build/three.core.js">
+  <link rel="modulepreload" href="vendor/three/build/three.module.js">
+  <link rel="modulepreload" href="js/main.js">
+  <link rel="modulepreload" href="js/world/layout.js">
+  <link rel="modulepreload" href="js/world/terrain.js">
+  <link rel="modulepreload" href="js/world/trees.js">
+  <link rel="modulepreload" href="js/actors/horse.js">
+  <link rel="modulepreload" href="js/actors/riders.js">
+  <link rel="modulepreload" href="js/util/textures.js">
+  <link rel="modulepreload" href="js/util/geom.js">
 </head>
 <body>
   <canvas id="scene" aria-label="A 3D diorama of Sleepy Hollow in a glass case"></canvas>
@@ -75,6 +88,24 @@
 
   <noscript><p class="fallback">This diorama needs JavaScript and WebGL to run.</p></noscript>
 
-  <script type="module" src="js/main.js"></script>
+  <script>
+    // Until the scene script starts, reassure visitors on slow connections,
+    // and say so plainly if the scripts fail to load.
+    (function () {
+      var loader = document.getElementById('loader');
+      var step = document.getElementById('loader-step');
+      window.__loaderSlow = setTimeout(function () {
+        if (!loader.classList.contains('started')) {
+          step.textContent = 'Fetching the clockwork\u2026 the first visit can take a moment.';
+        }
+      }, 3500);
+      window.__loaderFailed = function () {
+        clearTimeout(window.__loaderSlow);
+        loader.classList.add('error');
+        step.textContent = 'The case would not open \u2014 please check your connection and refresh.';
+      };
+    })();
+  </script>
+  <script type="module" src="js/main.js" onerror="window.__loaderFailed()"></script>
 </body>
 </html>
