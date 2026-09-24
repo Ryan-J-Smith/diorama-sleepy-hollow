@@ -47,6 +47,9 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
+If you're editing the code, turn on **Disable cache** in the browser's developer tools:
+Chrome can otherwise keep serving the old copy of a module after you change it.
+
 ## Publishing on GitHub Pages
 
 1. Create a GitHub repository and push this folder to it (the `index.html` must be at the
@@ -70,6 +73,7 @@ frames on request, so every capture comes out the same. The shots' camera paths 
 ```sh
 cd promo
 npm install
+npx playwright install chromium   # the browser the capture script drives
 npm run stills    # first/middle/last frame of each shot, headless -> promo/stills/
 npm run capture   # every frame, rendered on the GPU in a browser window -> promo/public/clips/
 npm run render    # the finished video -> promo/out/promo.mp4
@@ -106,6 +110,7 @@ promo/                the promo video: frame capture (Playwright) and edit (Remo
 
 ## Credits
 
+- Made by [Ryan Smith](https://www.linkedin.com/in/ryanjsmithphd/) and Claude Opus.
 - Story: Washington Irving, *The Legend of Sleepy Hollow* (1820), public domain.
 - Typeface: [IM Fell English](https://fonts.google.com/specimen/IM+Fell+English) by Igino
   Marini, via Google Fonts (SIL Open Font License). Falls back to Georgia offline.
