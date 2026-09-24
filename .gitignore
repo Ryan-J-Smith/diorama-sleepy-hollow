@@ -1,0 +1,7 @@
+# local planning notes
+ai_docs/
+docs/ai_docs/
+
+
+.DS_Store
+node_modules/

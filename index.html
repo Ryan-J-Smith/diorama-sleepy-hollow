@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>The Legend of Sleepy Hollow</title>
+  <meta name="description" content="A moonlit, mechanical diorama of Washington Irving's Legend of Sleepy Hollow.">
+  <meta name="theme-color" content="#07060a">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='36' r='22' fill='%23e07a1f'/%3E%3Crect x='29' y='8' width='6' height='10' rx='2' fill='%23553b1b'/%3E%3Cpath d='M20 32l6-6 6 6zM32 32l6-6 6 6z' fill='%23ffd36b'/%3E%3Cpath d='M20 44q12 8 24 0l-4 2-4-3-4 3-4-3-4 3z' fill='%23ffd36b'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/build/three.module.js",
+        "three/addons/": "./vendor/three/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="scene" aria-label="A 3D diorama of Sleepy Hollow in a glass case"></canvas>
+
+  <header class="title-card" id="title-card">
+    <h1>The Legend of Sleepy Hollow</h1>
+    <p>after Washington Irving &middot; 1820</p>
+  </header>
+
+  <nav class="controls" id="controls" aria-label="Diorama controls">
+    <button type="button" data-action="pause" aria-pressed="false" title="Stop or start the clockwork">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="icon-pause" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/><path class="icon-play" d="M8 5l11 7-11 7z"/></svg>
+      <span class="label">Pause</span>
+    </button>
+    <button type="button" data-action="turntable" aria-pressed="true" title="Slowly turn the diorama when idle">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5a7 7 0 1 1-6.6 4.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3 5.5l2.6 4.6L10 7.4z"/></svg>
+      <span class="label">Turntable</span>
+    </button>
+    <button type="button" data-action="follow" aria-pressed="false" title="Keep the view on the chase">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6c-5 0-9 6-9 6s4 6 9 6 9-6 9-6-4-6-9-6zm0 9.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+      <span class="label">Follow</span>
+    </button>
+    <button type="button" data-action="music" aria-pressed="true" title="Music on or off">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5a2.5 2.5 0 1 1-2-2.45V5l11-2v11.5a2.5 2.5 0 1 1-2-2.45V6.4l-7 1.27z"/><path class="icon-off" d="M3.3 2.3 21.7 20.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span class="label">Music</span>
+    </button>
+    <input type="range" class="volume" id="volume" min="0" max="1" step="0.01" value="0.3" aria-label="Music volume" title="Music volume">
+    <button type="button" data-action="reset" title="Return to the starting view">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 3 11h2.5v8h5v-5h3v5h5v-8H21z"/></svg>
+      <span class="label">Reset</span>
+    </button>
+    <button type="button" data-action="fullscreen" title="Fullscreen">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H6v3zm11-5h5v5h-2V6h-3zM4 15h2v3h3v2H4zm14 3v-3h2v5h-5v-2z"/></svg>
+      <span class="label">Fullscreen</span>
+    </button>
+  </nav>
+
+  <p class="hint" id="hint">Drag to turn &middot; Scroll or pinch to look closer &middot; Right-drag to pan</p>
+
+  <div class="loader" id="loader" role="status" aria-live="polite">
+    <div class="loader-inner">
+      <h2>The Legend of Sleepy Hollow</h2>
+      <blockquote>
+        &ldquo;&hellip;he saw the goblin rising in his stirrups, and in the very act of hurling his head at him.&rdquo;
+      </blockquote>
+      <div class="loader-bar"><span id="loader-fill"></span></div>
+      <p class="loader-step" id="loader-step">Opening the case&hellip;</p>
+      <button type="button" class="enter" id="enter" hidden>Wind the clockwork</button>
+    </div>
+  </div>
+
+  <noscript><p class="fallback">This diorama needs JavaScript and WebGL to run.</p></noscript>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
