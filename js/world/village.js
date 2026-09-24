@@ -6,7 +6,7 @@ import { BUILDINGS } from './layout.js';
 import { makeBuilding } from './buildings.js';
 import { makeLampPost, makeLantern, makeJack, groundGlow } from './props.js';
 import { surface, plain, IRON } from './kit.js';
-import { signTexture } from '../util/textures.js';
+import { signTexture, makeCanvas, toTexture } from '../util/textures.js';
 import { SPURS } from './layout.js';
 import { boxUV } from '../util/geom.js';
 import { noise1 } from '../util/noise.js';
@@ -22,7 +22,8 @@ const SPECS = {
   cottage: { roof: 'gable', wallH: 0.55, roofH: 0.42, wallColor: '#8a7560', roofColor: '#4a4038', chimneys: ['right'] },
   tavern: { roof: 'gambrel', stories: 2, wallH: 1.0, roofH: 0.62, wallColor: '#6e2a22', roofColor: '#3a3634', trimColor: '#e2dccb', shutterColor: '#1f2b22', chimneys: ['left', 'right'], litChance: 0.95 },
   houseF: { roof: 'gable', wallH: 0.6, roofH: 0.44, wallColor: '#ddd6c6', roofColor: '#4a4540', shutterColor: '#243a4a', chimneys: ['left'] },
-  farmhouse: { roof: 'gambrel', wallH: 0.66, roofH: 0.7, wallColor: '#e0d9c8', roofColor: '#403a35', shutterColor: '#2d4436', chimneys: ['left', 'right'], litChance: 0.9 },
+  // one window either side of the door (four crowded the doorway); the back keeps its three
+  farmhouse: { roof: 'gambrel', wallH: 0.66, roofH: 0.7, wallColor: '#e0d9c8', roofColor: '#403a35', shutterColor: '#2d4436', chimneys: ['left', 'right'], litChance: 0.9, frontWindows: 2, backWindows: 3 },
   barn: { roof: 'gambrel', wall: 'board', wallScale: 1.8, wallH: 0.82, roofH: 0.78, wallColor: '#7d2c20', roofColor: '#3f3b38', trimColor: '#d8d0c0', chimneys: [], door: 'none', frontWindows: 0, sideWindows: 0, litChance: 0.5 },
   school: { roof: 'gable', wallH: 0.5, roofH: 0.36, wallColor: '#6b4e36', wallScale: 1.1, roofColor: '#4a4038', trimColor: '#8a7a64', chimneys: ['left'], litChance: 0.35, frontWindows: 2 },
 };
@@ -101,10 +102,11 @@ function addBarnDetails(world, house) {
   const trim = plain('#d8d0c0', { roughness: 0.8 });
   const dw = 0.34;
   const dh = 0.55;
-  // warm lamplit interior seen through the half-open door
+  // warm lamplit interior seen through the half-open door: kept dim (under
+  // the bloom threshold) so it reads as a lantern inside, not a furnace
   const inside = new THREE.Mesh(
     new THREE.PlaneGeometry(dw * 1.9, dh),
-    new THREE.MeshBasicMaterial({ color: new THREE.Color(1.1, 0.55, 0.2) }),
+    new THREE.MeshBasicMaterial({ map: barnInteriorTexture() }),
   );
   inside.position.set(0, dh / 2, z + 0.004);
   g.add(inside);
@@ -149,11 +151,40 @@ function addBarnDetails(world, house) {
   const hook = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.012, 0.07), IRON());
   hook.position.set(dw * 1.35, 0.57, z + 0.035);
   g.add(hook);
-  // hay spilling out of the door
-  const hay = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), plain('#b89a52', { flat: true }));
-  hay.scale.set(1.6, 0.35, 0.8);
-  hay.position.set(-0.05, 0, z + 0.12);
-  g.add(hay);
+  // The hay spilling out of the door is forked out in buildFarm (farm.js),
+  // so it shares the haystacks' and corn shocks' straw material.
+}
+
+/** Dim barn interior: a hanging lantern's glow, dark posts and a hay mound. */
+function barnInteriorTexture() {
+  const w = 128;
+  const h = 112;
+  const c = makeCanvas(w, h);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#1c0e06';
+  ctx.fillRect(0, 0, w, h);
+  const glow = ctx.createRadialGradient(w * 0.46, h * 0.3, 2, w * 0.46, h * 0.36, w * 0.62);
+  glow.addColorStop(0, '#b8692a');
+  glow.addColorStop(0.35, '#7a3e18');
+  glow.addColorStop(1, 'rgba(28, 14, 6, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, w, h);
+  // posts and a beam in silhouette
+  ctx.fillStyle = 'rgba(18, 9, 4, 0.85)';
+  for (const x of [0.16, 0.74]) ctx.fillRect(w * x, 0, w * 0.07, h);
+  ctx.fillRect(0, h * 0.1, w, h * 0.06);
+  // hay heaped on the floor, catching the light
+  const hay = ctx.createLinearGradient(0, h * 0.7, 0, h);
+  hay.addColorStop(0, '#8a6428');
+  hay.addColorStop(1, '#3a2610');
+  ctx.fillStyle = hay;
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  ctx.quadraticCurveTo(w * 0.3, h * 0.66, w * 0.62, h * 0.82);
+  ctx.quadraticCurveTo(w * 0.85, h * 0.74, w, h * 0.86);
+  ctx.lineTo(w, h);
+  ctx.fill();
+  return toTexture(c, { repeat: false });
 }
 
 function addTavernDetails(world, house) {
@@ -254,7 +285,8 @@ function buildLamps(world) {
   const spots = [
     { near: [-7.0, -2.25], side: 1, light: false },
     { near: [-7.02, 0.0], side: -1, light: true },
-    { near: [-5.6, 3.25], side: 1, light: false },
+    // across the road from the tavern, so its sign and the fingerpost have room
+    { near: [-5.6, 3.25], side: -1, light: false },
     { near: [-3.9, 3.53], side: -1, light: true },
     { near: [-1.9, 3.52], side: 1, light: false },
   ];
@@ -289,7 +321,9 @@ function buildSignposts(world) {
   };
   layout.spurs.forEach((sp, k) => {
     const i = Math.min(16, sp.x.length - 1);
-    const side = k === 0 ? 1 : -1;
+    // both on the same hand: the Tarry Town post stands on the village corner
+    // of its junction, clear of the tavern's sign and lamp
+    const side = 1;
     const x = sp.x[i] - sp.tz[i] * 0.46 * side;
     const z = sp.z[i] + sp.tx[i] * 0.46 * side;
     const post = new THREE.Group();

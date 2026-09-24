@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import { TERRAIN, WATER_Y } from '../config.js';
-import { taperedTube, jitter, paint, mergeAll } from '../util/geom.js';
+import { taperedTube, paint, mergeAll } from '../util/geom.js';
 import { makeCanvas, toTexture } from '../util/textures.js';
 import { Rng } from '../util/rng.js';
 import { FIELD, CHURCHYARD, GNARLED_TREE, CLEARINGS } from './layout.js';
@@ -25,8 +25,14 @@ const PALETTES = {
 // many alpha-cut "leaf cards" painted with clusters of leaves. Card normals
 // point away from the crown's center so the foliage shades like a soft volume.
 
-const ATLAS_CELLS = 4; // 0 maple, 1 round (birch), 2 lobed (oak), 3 solid
+const ATLAS_CELLS = 5; // 0 maple, 1 round (birch), 2 lobed (oak), 3 solid, 4 hemlock sprays
 const SOLID_UV = [(3 + 0.5) / ATLAS_CELLS, 0.5];
+const SPRAY_CELL = 4; // two sprays side by side, each half a cell wide: 0 broad, 1 slender
+
+/** Atlas uv on hemlock spray `k`: u runs across the spray, v from its base (0) to its tip (1). */
+function sprayUV(k, u, v) {
+  return [(SPRAY_CELL + k * 0.5 + 0.01 + u * 0.48) / ATLAS_CELLS, 0.01 + v * 0.98];
+}
 
 function leafShape(ctx, kind, size) {
   ctx.beginPath();
@@ -47,6 +53,121 @@ function leafShape(ctx, kind, size) {
     }
   }
   ctx.closePath();
+}
+
+/**
+ * A flat hemlock spray seen from above, painted into a w x h box at (ox, 0):
+ * a twig with alternate side shoots, each lined with short two-ranked needles.
+ * The needle mass underneath is dark and solid (a filled outline inside the
+ * shoot tips) so a spray keeps its body in the small mipmaps and distant
+ * trees stay dense; the needles on top feather its edge and lighten toward
+ * the tips, like the season's new growth. Base at the bottom, tip at the top.
+ */
+function paintSpray(ctx, rng, ox, w, h, { shoots, reach, angle, needle }) {
+  const SHADES = 6;
+  const mass = [];
+  const needles = Array.from({ length: SHADES }, () => []);
+  const len = h - 16;
+  const bend = rng.float(-0.04, 0.04) * w;
+  const spine = (t) => [ox + w / 2 + Math.sin(t * Math.PI) * bend, h - 8 - t * len];
+
+  // walk a shoot out from (x, y) along (dx, dy), curving toward the spray's tip
+  const shoot = (x, y, dx, dy, length, size, t0) => {
+    const step = 2.2;
+    const steps = Math.max(2, Math.round(length / step));
+    const path = [x, y];
+    for (let i = 1; i <= steps; i++) {
+      const f = i / steps;
+      dy -= 0.009;
+      const m = Math.hypot(dx, dy);
+      dx /= m;
+      dy /= m;
+      x += dx * step;
+      y += dy * step;
+      path.push(x, y);
+      const nl = size * (1 - 0.45 * f) * rng.float(0.8, 1.15);
+      for (const s of [-1, 1]) {
+        const lean = rng.float(0.12, 0.5); // needles sweep forward a little
+        const nx = -dy * s * Math.cos(lean) + dx * Math.sin(lean);
+        const ny = dx * s * Math.cos(lean) + dy * Math.sin(lean);
+        const g = 0.05 + 0.45 * f + 0.4 * t0 + rng.float(-0.2, 0.2);
+        const k = Math.max(0, Math.min(SHADES - 1, Math.floor(g * SHADES)));
+        needles[k].push(x, y, x + nx * nl, y + ny * nl);
+      }
+    }
+    mass.push({ path, width: size * 1.25 });
+    return path;
+  };
+
+  const rachis = [];
+  for (let i = 0; i <= 24; i++) rachis.push(...spine(i / 24));
+  mass.push({ path: rachis, width: 4.5 });
+  const tips = [[], []]; // shoot tips on the left and right, base to tip
+  for (let j = 0; j < shoots; j++) {
+    const t = 0.04 + (0.9 * (j + rng.float(0, 0.7))) / shoots;
+    const side = j % 2 ? 1 : -1;
+    const [x, y] = spine(t);
+    // broadest a little past the middle, like a fan of foliage
+    const profile = Math.sin(Math.PI * Math.pow(t, 1.15));
+    const length = w * reach * (0.12 + 0.88 * profile) * rng.float(0.82, 1.1);
+    const a = angle * (1.12 - 0.3 * t) * rng.float(0.9, 1.1);
+    const path = shoot(x, y, side * Math.sin(a), -Math.cos(a), length, needle, t);
+    tips[side > 0 ? 1 : 0].push(path.slice(-2));
+    // the longer shoots fork again, forward and outward
+    if (length > 20) {
+      const pts = path.length / 2;
+      for (const [f, turn] of [[0.3, -0.75], [0.55, 0.6]]) {
+        const i = Math.floor((pts - 1) * f * rng.float(0.85, 1.15));
+        const b = a + turn * rng.float(0.8, 1.2);
+        shoot(path[i * 2], path[i * 2 + 1], side * Math.sin(b), -Math.cos(b), length * rng.float(0.3, 0.42), needle * 0.8, t);
+      }
+    }
+  }
+
+  const strokePath = (p) => {
+    ctx.beginPath();
+    ctx.moveTo(p[0], p[1]);
+    for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]);
+    ctx.stroke();
+  };
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(ox + 1, 1, w - 2, h - 2);
+  ctx.clip();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // solid body, a little inside the shoot tips
+  const cx = ox + w / 2;
+  const hull = [spine(0.1), ...tips[0], spine(0.9), ...tips[1].reverse()];
+  ctx.fillStyle = 'rgb(70,76,68)';
+  ctx.beginPath();
+  hull.forEach(([x, y], i) => {
+    const px = cx + (x - cx) * 0.72;
+    if (i) ctx.lineTo(px, y);
+    else ctx.moveTo(px, y);
+  });
+  ctx.fill();
+  ctx.strokeStyle = 'rgb(84,90,80)';
+  for (const { path, width } of mass) {
+    ctx.lineWidth = width;
+    strokePath(path);
+  }
+  // the bare brown twig shows through toward the base
+  ctx.strokeStyle = 'rgb(74,62,52)';
+  ctx.lineWidth = 1.1;
+  strokePath(rachis.slice(0, 36));
+  ctx.lineWidth = 1.5;
+  needles.forEach((n, k) => {
+    const v = 128 + k * 24;
+    ctx.strokeStyle = `rgb(${Math.round(v * 0.97)},${v},${Math.round(v * 0.76)})`;
+    ctx.beginPath();
+    for (let i = 0; i < n.length; i += 4) {
+      ctx.moveTo(n[i], n[i + 1]);
+      ctx.lineTo(n[i + 2], n[i + 3]);
+    }
+    ctx.stroke();
+  });
+  ctx.restore();
 }
 
 let leafMaterial = null;
@@ -96,6 +217,9 @@ function crownMaterial() {
   }
   ctx.fillStyle = '#b0b0b0';
   ctx.fillRect(3 * cell, 0, cell, cell);
+  // hemlock sprays for the conifers (painted last, so the cells above are unchanged)
+  paintSpray(ctx, rng, SPRAY_CELL * cell, cell / 2, cell, { shoots: 30, reach: 0.47, angle: 1.0, needle: 4.4 });
+  paintSpray(ctx, rng, SPRAY_CELL * cell + cell / 2, cell / 2, cell, { shoots: 26, reach: 0.34, angle: 0.85, needle: 3.8 });
   const tex = toTexture(c, { repeat: false });
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   leafMaterial = new THREE.MeshStandardMaterial({
@@ -120,9 +244,9 @@ function crownMaterial() {
 
 /**
  * Leafy crown from a list of spheres {x, y, z, r, sy}. `cells` picks which
- * leaf clusters to use.
+ * leaf clusters to use; `dim` darkens the leaf cards (for shaded undersides).
  */
-function crownFromSpheres(rng, spheres, cells, { cards = 17, cardSize = [0.2, 0.3], core = 0.58 } = {}) {
+function crownFromSpheres(rng, spheres, cells, { cards = 17, cardSize = [0.2, 0.3], core = 0.58, dim = 1 } = {}) {
   const center = new THREE.Vector3();
   let maxR = 0;
   for (const s of spheres) center.add(new THREE.Vector3(s.x, s.y, s.z));
@@ -173,7 +297,7 @@ function crownFromSpheres(rng, spheres, cells, { cards = 17, cardSize = [0.2, 0.
       const u2 = up.clone().multiplyScalar(Math.cos(roll)).addScaledVector(right, -Math.sin(roll));
       const half = rng.float(cardSize[0], cardSize[1]) / 2;
       const depth = c.distanceTo(center) / maxR;
-      const b = (0.72 + 0.42 * depth) * rng.float(0.88, 1.12);
+      const b = (0.72 + 0.42 * depth) * rng.float(0.88, 1.12) * dim;
       const warm = rng.float(-0.07, 0.07);
       const shade = [b * (1 + warm), b, b * (1 - warm)];
       const cell = rng.pick(cells);
@@ -201,8 +325,12 @@ function crownFromSpheres(rng, spheres, cells, { cards = 17, cardSize = [0.2, 0.
   return g;
 }
 
-function trunk(rng, height, r0, r1, lean = 0.08, color = BARK, branches = 3, branchStart = 0.55) {
-  const parts = [];
+/**
+ * Draw a trunk's random layout: its lean, stem points and branches. Kept
+ * apart from building it, so a crown drawn from the same rng afterwards can
+ * be reached into (see trunkGeometry).
+ */
+function trunkPlan(rng, height, r0, r1, lean = 0.08, color = BARK, branches = 3, branchStart = 0.55) {
   const pts = [];
   const radii = [];
   const segs = 5;
@@ -215,24 +343,80 @@ function trunk(rng, height, r0, r1, lean = 0.08, color = BARK, branches = 3, bra
   }
   // flare at the base
   radii[0] *= 1.35;
-  parts.push(taperedTube(pts, radii, 6));
+  const limbs = [];
   for (let b = 0; b < branches; b++) {
     const a = rng.float(0, Math.PI * 2);
     const y0 = height * rng.float(branchStart, 0.92);
     const len = height * rng.float(0.35, 0.55);
-    const s = new THREE.Vector3(lx * 0.5, y0, lz * 0.5);
-    const e = s.clone().add(new THREE.Vector3(Math.cos(a) * len * 0.7, len * 0.7, Math.sin(a) * len * 0.7));
-    const m = s.clone().lerp(e, 0.5).add(new THREE.Vector3(0, -0.03, 0));
-    parts.push(taperedTube([s, m, e], [r1 * 0.8, r1 * 0.55, r1 * 0.25], 4));
+    limbs.push({ a, y0, len });
   }
+  return { height, r1, lx, lz, pts, radii, limbs, color };
+}
+
+/**
+ * Build a planned trunk. Given the crown's spheres, the wood grows up into
+ * the foliage instead of stopping short under it: the stem carries on into
+ * the heart of the crown, each branch sweeps up into the lobe nearest its
+ * heading, and lobes left without a branch get one of their own, so every
+ * branch end is buried in a dark core and no gap shows under the leaves.
+ */
+function trunkGeometry({ height, r1, lx, lz, pts, radii, limbs, color }, crown = null) {
+  const parts = [];
+  // out from the trunk, then up into the crown
+  const limb = (s, e, r) => {
+    const m = s.clone().lerp(e, 0.45).add(new THREE.Vector3((e.x - s.x) * 0.15, -0.03, (e.z - s.z) * 0.15));
+    parts.push(taperedTube([s, m, e], [r, r * 0.7, r * 0.35], 4));
+  };
+  if (crown) {
+    const heart = new THREE.Vector3(crown[0].x, crown[0].y, crown[0].z);
+    const top = pts[pts.length - 1];
+    parts.push(taperedTube([...pts, top.clone().lerp(heart, 0.5), heart], [...radii, r1 * 0.8, r1 * 0.45], 6));
+  } else {
+    parts.push(taperedTube(pts, radii, 6));
+  }
+  const lobes = crown ? crown.filter((c) => Math.hypot(c.x, c.z) > 0.12) : [];
+  const heading = (c) => Math.atan2(c.z, c.x);
+  const gap = (a, b) => Math.abs(((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+  const reached = new Set();
+  for (const { a, y0, len } of limbs) {
+    const s = new THREE.Vector3(lx * 0.5, y0, lz * 0.5);
+    if (lobes.length) {
+      const lobe = lobes.reduce((best, c) => (gap(heading(c), a) < gap(heading(best), a) ? c : best));
+      reached.add(lobe);
+      limb(s, new THREE.Vector3(lobe.x, lobe.y, lobe.z), r1 * 0.8);
+    } else {
+      const e = s.clone().add(new THREE.Vector3(Math.cos(a) * len * 0.7, len * 0.7, Math.sin(a) * len * 0.7));
+      const m = s.clone().lerp(e, 0.5).add(new THREE.Vector3(0, -0.03, 0));
+      parts.push(taperedTube([s, m, e], [r1 * 0.8, r1 * 0.55, r1 * 0.25], 4));
+    }
+  }
+  lobes
+    .filter((c) => !reached.has(c))
+    .forEach((c, k) => {
+      const t = 0.7 + 0.22 * ((k * 0.618) % 1);
+      limb(new THREE.Vector3(lx * t * t, t * height, lz * t * t), new THREE.Vector3(c.x, c.y, c.z), r1 * 0.65);
+    });
   const g = mergeAll(parts.map((p) => p.toNonIndexed()));
   paint(g, color);
   return g;
 }
 
+function trunk(rng, ...plan) {
+  return trunkGeometry(trunkPlan(rng, ...plan));
+}
+
+/**
+ * A low, shaded cluster of leaves around a dark core where the limbs fork
+ * into the crown, so the underside meets the wood. Drawn after the crown, so
+ * the crown's own leaves are unchanged.
+ */
+function underCrown(rng, y, r, sy, cells) {
+  return crownFromSpheres(rng, [{ x: 0, y, z: 0, r, sy }], cells, { dim: 0.72 });
+}
+
 function mapleVariant(rng) {
   const h = rng.float(0.62, 0.8);
-  const t = trunk(rng, h, 0.055, 0.032);
+  const plan = trunkPlan(rng, h, 0.055, 0.032);
   const cy = h + 0.32;
   const spheres = [{ x: 0, y: cy + 0.08, z: 0, r: 0.34 }];
   const n = rng.int(4, 6);
@@ -242,7 +426,8 @@ function mapleVariant(rng) {
     spheres.push({ x: Math.cos(a) * rr, y: cy + rng.float(-0.12, 0.2), z: Math.sin(a) * rr, r: rng.float(0.2, 0.28) });
   }
   spheres.push({ x: rng.float(-0.08, 0.08), y: cy + 0.36, z: rng.float(-0.08, 0.08), r: 0.2 });
-  return { trunk: t, crown: crownFromSpheres(rng, spheres, [0, 0, 2]) };
+  const crown = crownFromSpheres(rng, spheres, [0, 0, 2]);
+  return { trunk: trunkGeometry(plan, spheres), crown: mergeAll([crown, underCrown(rng, h + 0.12, 0.24, 0.7, [0, 0, 2])]) };
 }
 
 function birchVariant(rng) {
@@ -267,7 +452,7 @@ function birchVariant(rng) {
 
 function oakVariant(rng) {
   const h = rng.float(0.5, 0.62);
-  const t = trunk(rng, h, 0.075, 0.045, 0.05, BARK, 4, 0.5);
+  const plan = trunkPlan(rng, h, 0.075, 0.045, 0.05, BARK, 4, 0.5);
   const cy = h + 0.3;
   const spheres = [{ x: 0, y: cy + 0.1, z: 0, r: 0.34, sy: 0.8 }];
   const n = rng.int(6, 8);
@@ -276,44 +461,223 @@ function oakVariant(rng) {
     const rr = rng.float(0.32, 0.44);
     spheres.push({ x: Math.cos(a) * rr, y: cy + rng.float(-0.08, 0.14), z: Math.sin(a) * rr, r: rng.float(0.2, 0.27), sy: 0.8 });
   }
-  return { trunk: t, crown: crownFromSpheres(rng, spheres, [2, 2, 0]) };
+  const crown = crownFromSpheres(rng, spheres, [2, 2, 0]);
+  return { trunk: trunkGeometry(plan, spheres), crown: mergeAll([crown, underCrown(rng, h + 0.12, 0.28, 0.65, [2, 2, 0])]) };
 }
 
+/**
+ * Hemlock: tiers of soft, drooping boughs around a slim dark core, topped by
+ * a spire with a nodding leader. Each bough is a card painted with a flat
+ * hemlock spray, running out from the trunk, rising a little, then arching
+ * down, with more sprays hanging from its outer part: seen from above the
+ * tiers are layered fans, from the side a series of drooping curtains. Like
+ * the leafy crowns, normals point out from the trunk and up, so the tiers
+ * shade as one soft volume, and the bough tips are lighter to catch the moon.
+ */
 function pineVariant(rng) {
-  const tiers = rng.int(4, 5);
+  // the variant's own seed picks the form: a broad, full tree or a taller, slimmer one
+  const slim = rng.next() > 0.6;
   const t = trunk(rng, 0.35, 0.04, 0.03, 0.02, BARK, 0);
-  const cones = [];
-  let y = 0.25;
-  let r = rng.float(0.42, 0.5);
-  for (let i = 0; i < tiers; i++) {
-    const h = 0.55 - i * 0.05;
-    const g = new THREE.ConeGeometry(r, h, 16, 2, true);
-    // jagged, bough-tipped skirt instead of a smooth cone
-    const p = g.attributes.position;
-    for (let k = 0; k < p.count; k++) {
-      const py = p.getY(k);
-      if (py < -h / 2 + 1e-4 || Math.abs(py) < 1e-4) {
-        const a = Math.atan2(p.getZ(k), p.getX(k));
-        const seg = Math.round((a / (Math.PI * 2)) * 16);
-        const f = seg % 2 ? 0.7 : 1.05;
-        p.setX(k, p.getX(k) * f);
-        p.setZ(k, p.getZ(k) * f);
-        if (py < -h / 2 + 1e-4 && seg % 2 === 0) p.setY(k, py - 0.05);
-      }
+  const top = slim ? rng.float(1.56, 1.64) : rng.float(1.4, 1.48);
+  const base = 0.32; // height of the lowest boughs
+  const spread = slim ? rng.float(0.42, 0.45) : rng.float(0.5, 0.54);
+  const levels = slim ? 9 : 8;
+  const crest = top - 0.26; // the highest boughs; the spire rises above them
+  const envelope = (y) => spread * Math.max(0, (top - y) / (top - base));
+  // a lopsided outline, as if crowded from one side
+  const p1 = rng.float(0, Math.PI * 2);
+  const p2 = rng.float(0, Math.PI * 2);
+  const lop = (a) => 1 + 0.1 * Math.sin(a + p1) + 0.06 * Math.sin(2 * a + p2);
+
+  const pos = [];
+  const nor = [];
+  const uv = [];
+  const colr = [];
+  const vert = ({ p, n, uv: [u, v], c }) => {
+    pos.push(p.x, p.y, p.z);
+    nor.push(n.x, n.y, n.z);
+    uv.push(u, v);
+    colr.push(c[0], c[1], c[2]);
+  };
+  const quad = (a, b, c, d) => {
+    for (const q of [a, b, c, a, c, d]) vert(q);
+  };
+  const UP = new THREE.Vector3(0, 1, 0);
+  const outUp = (p, fallback, lift = 0.7) => {
+    const radial = new THREE.Vector3(p.x, 0, p.z);
+    if (radial.lengthSq() < 1e-6) radial.copy(fallback);
+    return radial.normalize().multiplyScalar(0.72).addScaledVector(UP, lift);
+  };
+
+  /**
+   * A card strip along spine(s), s from 0 (base) to 1 (tip), `width` across.
+   * `across(s)` gives the horizontal side direction, `shade(s)` the
+   * brightness. With `crease`, the strip gets a centre line and its sides sag
+   * by `sag`, like a spray bowed over its twig.
+   */
+  const strip = ({ rows, spine, across, width, sag = 0, crease = true, sprite, flip, reverse = false, shade, warm = 0, roll = 0, lift = 0.7 }) => {
+    const cols = crease ? [-1, 0, 1] : [-1, 1];
+    const grid = rows.map((s) => {
+      const c = spine(s);
+      const side = across(s);
+      const lat = side.clone().multiplyScalar(Math.cos(roll)).addScaledVector(UP, Math.sin(roll));
+      return cols.map((k) => {
+        const p = c.clone().addScaledVector(lat, (k * width) / 2);
+        if (k && crease) p.y -= sag * (0.4 + 0.6 * s);
+        const n = outUp(p, side.clone().cross(UP).negate(), lift).addScaledVector(lat, k * 0.25).normalize();
+        const b = shade(s) * (k && crease ? 0.9 : 1);
+        return { p, n, uv: sprayUV(sprite, flip ? (1 - k) / 2 : (1 + k) / 2, reverse ? 1 - s : s), c: [b * (1 + warm), b, b * (1 - warm)] };
+      });
+    });
+    for (let i = 0; i < rows.length - 1; i++) {
+      for (let j = 0; j < cols.length - 1; j++) quad(grid[i][j], grid[i][j + 1], grid[i + 1][j + 1], grid[i + 1][j]);
     }
-    g.translate(0, y + h / 2, 0);
-    jitter(g, 0.02, rng.float(0, 50), 6);
-    const shade = rng.float(0.85, 1.1);
-    paint(g, new THREE.Color(shade, shade, shade));
-    const ng = g.toNonIndexed();
-    ng.computeVertexNormals();
-    const uvA = ng.attributes.uv;
-    for (let k = 0; k < uvA.count; k++) uvA.setXY(k, SOLID_UV[0], SOLID_UV[1]);
-    cones.push(ng);
-    y += h * 0.52;
-    r *= 0.74;
+  };
+
+  /**
+   * A bough: a flat spray reaching out from the trunk, rising a little and
+   * arching down, with sprays hanging from its outer part, so every tier ends
+   * in a drooping curtain that reads from the side as well as from above.
+   */
+  const bough = ({ y, a, r, rise, droop, hang, curl, sprite, bright }) => {
+    const dirAt = (s) => new THREE.Vector3(Math.cos(a + curl * s), 0, Math.sin(a + curl * s));
+    const sideAt = (s) => {
+      const d = dirAt(s);
+      return new THREE.Vector3(-d.z, 0, d.x);
+    };
+    const reach = r * 0.8;
+    const spine = (s) => dirAt(s).multiplyScalar(0.03 + (reach - 0.03) * s).setY(y + reach * (rise * s - droop * s * s));
+    const width = Math.max(0.08, r * 0.5 * rng.float(0.92, 1.1));
+    const warm = rng.float(-0.04, 0.04);
+    strip({
+      rows: [0, 0.5, 1],
+      spine,
+      across: sideAt,
+      width,
+      sag: width * 0.2,
+      sprite,
+      flip: rng.chance(0.5),
+      shade: (s) => bright * (0.55 + 0.7 * s),
+      warm,
+      roll: rng.float(-0.2, 0.2),
+      lift: 0.85,
+    });
+    // hanging sprays: out and down from part-way along, steepening to `hang`
+    // (radians below level) at the tip
+    const sprays = r > 0.12 ? 2 : 1;
+    for (let k = 0; k < sprays; k++) {
+      const at = sprays === 2 ? [0.45, 0.8][k] * rng.float(0.9, 1.1) : rng.float(0.55, 0.75);
+      const swing = sprays === 2 ? (k ? 0.4 : -0.4) * rng.float(0.7, 1.2) : rng.float(-0.2, 0.2);
+      const d = dirAt(at).applyAxisAngle(UP, swing);
+      const len = Math.max(0.09, r * rng.float(0.46, 0.56));
+      const pts = [spine(at).addScaledVector(d, -0.02)];
+      for (const [f, part] of [[0.35, 0.5], [0.85, 0.5]]) {
+        const th = 0.3 + (hang - 0.3) * f;
+        pts.push(pts[pts.length - 1].clone().addScaledVector(d, len * part * Math.cos(th)).addScaledVector(UP, -len * part * Math.sin(th)));
+      }
+      strip({
+        rows: [0, 0.5, 1],
+        spine: (s) => pts[Math.round(s * 2)],
+        across: () => new THREE.Vector3(-d.z, 0, d.x),
+        width: len * rng.float(0.62, 0.74),
+        crease: false,
+        sprite: rng.chance(0.7) ? 0 : 1,
+        flip: rng.chance(0.5),
+        shade: (s) => bright * (0.75 + 0.8 * s),
+        warm,
+        roll: rng.float(-0.25, 0.25),
+        lift: 0.55,
+      });
+    }
+  };
+
+  // the dark core, so you can't see through: a slim spindle, shaded like the
+  // deep inside of the tree, with near-level normals so the sky doesn't pick
+  // out its smooth sides
+  const coreSegs = 7;
+  const corePh = rng.float(0, Math.PI * 2);
+  const coreTop = base + (crest - base) * 0.75;
+  const coreAt = (y) => (0.28 - 0.1 * ((y - base) / (coreTop - base))) * envelope(y);
+  const rings = [0, 0.4, 0.75].map((f) => {
+    const y = base - 0.04 + (coreTop - base + 0.04) * f;
+    return Array.from({ length: coreSegs }, (_, k) => {
+      const ang = corePh + (k / coreSegs) * Math.PI * 2;
+      const rr = coreAt(y) * rng.float(0.85, 1.12);
+      const p = new THREE.Vector3(Math.cos(ang) * rr, y, Math.sin(ang) * rr);
+      const n = new THREE.Vector3(Math.cos(ang), 0.15, Math.sin(ang)).normalize();
+      return { p, n, uv: SOLID_UV, c: [0.32, 0.32, 0.32] };
+    });
+  });
+  for (let b = 0; b < rings.length - 1; b++) {
+    for (let k = 0; k < coreSegs; k++) {
+      const k1 = (k + 1) % coreSegs;
+      quad(rings[b][k], rings[b][k1], rings[b + 1][k1], rings[b + 1][k]);
+    }
   }
-  return { trunk: t, crown: mergeAll(cones) };
+  for (let k = 0; k < coreSegs; k++) {
+    const k1 = (k + 1) % coreSegs;
+    const mid = corePh + ((k + 0.5) / coreSegs) * Math.PI * 2;
+    const n = new THREE.Vector3(Math.cos(mid), 0.15, Math.sin(mid)).normalize();
+    vert(rings[2][k]);
+    vert(rings[2][k1]);
+    vert({ p: new THREE.Vector3(0, coreTop, 0), n, uv: SOLID_UV, c: [0.32, 0.32, 0.32] });
+  }
+
+  let phase = rng.float(0, Math.PI * 2);
+  for (let i = 0; i < levels; i++) {
+    const f = i / (levels - 1);
+    // tiers draw closer together toward the top, where the boughs are short
+    const y = base + (crest - base) * (1 - (1 - f) ** 1.3) + (i && i < levels - 1 ? rng.float(-0.02, 0.02) : 0);
+    const R = envelope(y);
+    const width = Math.max(0.08, R * 0.5);
+    const count = Math.max(3, Math.min(10, Math.round((2 * Math.PI * 0.62 * R) / (0.8 * width))));
+    phase += 2.39996; // golden angle, so tiers don't line up
+    for (let j = 0; j < count; j++) {
+      if (i < levels - 1 && rng.chance(0.08)) continue; // the odd missing bough
+      const a = phase + ((j + rng.float(-0.3, 0.3)) / count) * Math.PI * 2;
+      bough({
+        y: y + rng.float(-0.025, 0.02),
+        a,
+        r: R * lop(a) * rng.float(0.84, 1.1) * (rng.chance(0.1) ? 1.22 : 1),
+        rise: 0.08 + 0.3 * f + rng.float(-0.04, 0.04),
+        droop: (0.4 - 0.2 * f) * rng.float(0.85, 1.15),
+        hang: (1.15 - 0.45 * f) * rng.float(0.85, 1.1),
+        curl: rng.float(-0.25, 0.25),
+        sprite: f > 0.7 || rng.chance(0.25) ? 1 : 0,
+        bright: (0.9 + 0.25 * f) * rng.float(0.9, 1.1),
+      });
+    }
+  }
+
+  // the spire: three crossed sprays, upside down so they narrow to a bare
+  // twig at the top, bending over into hemlock's nodding leader
+  const nodA = rng.float(0, Math.PI * 2);
+  const nodDir = new THREE.Vector3(Math.cos(nodA), 0, Math.sin(nodA));
+  const nod = rng.float(0.05, 0.08);
+  const y0 = crest - 0.14;
+  const leaderAt = (s) => nodDir.clone().multiplyScalar(nod * s ** 2.5).setY(y0 + (top - y0) * s - nod * 0.6 * s ** 4);
+  for (let k = 0; k < 3; k++) {
+    const across = nodDir.clone().applyAxisAngle(UP, Math.PI / 2 + (k * Math.PI) / 3 + rng.float(-0.2, 0.2));
+    strip({
+      rows: [0, 0.45, 0.8, 1],
+      spine: leaderAt,
+      across: () => across,
+      width: rng.float(0.15, 0.19),
+      crease: false,
+      sprite: 0,
+      flip: rng.chance(0.5),
+      reverse: true,
+      shade: (s) => 1.0 + 0.2 * s,
+      lift: 0.6,
+    });
+  }
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colr, 3));
+  return { trunk: t, crown: g };
 }
 
 /** Recursively grown gnarled branches (merged into one geometry). */

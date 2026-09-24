@@ -6,6 +6,7 @@ import {
   boardBattenTexture,
   shingleTexture,
   stoneTexture,
+  stoneNormalTexture,
   plankTexture,
   doorTexture,
 } from '../util/textures.js';
@@ -26,11 +27,17 @@ const TEXTURES = {
   door: doorTexture,
 };
 
-/** Textured, tinted standard material. */
+// Surfaces with relief: a normal map painted alongside the color texture.
+const NORMALS = {
+  stone: stoneNormalTexture,
+};
+
+/** Textured, tinted standard material (with relief where the surface has a normal map). */
 export function surface(kind, color, { roughness = 0.88, side = THREE.FrontSide } = {}) {
   return get(`${kind}:${color}:${roughness}:${side}`, () =>
     new THREE.MeshStandardMaterial({
       map: TEXTURES[kind](),
+      normalMap: NORMALS[kind]?.() ?? null,
       color: new THREE.Color(color),
       roughness,
       metalness: 0,

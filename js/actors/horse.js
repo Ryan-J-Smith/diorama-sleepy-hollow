@@ -81,10 +81,11 @@ export class Horse {
    * @param {number} [o.gaunt] 0..1 old plough horse: ewe neck, ribs, hip bones
    * @param {number} [o.eyeGlow] emissive red eyes (the Horseman's steed)
    * @param {number} [o.maneLength] longer, wilder mane and tail
+   * @param {number} [o.phase] starting point in the gallop cycle, 0..1
    */
-  constructor({ coat, mane, blanket = '#5a2a1e', scale = 1, gaunt = 0, eyeGlow = 0, maneLength = 1 }) {
+  constructor({ coat, mane, blanket = '#5a2a1e', scale = 1, gaunt = 0, eyeGlow = 0, maneLength = 1, phase = 0 }) {
     this.group = new THREE.Group();
-    this.phase = Math.random();
+    this.phase = phase;
     const coatC = col(coat);
     const maneC = col(mane);
     const hoofC = col('#1a1512');
@@ -321,9 +322,11 @@ export class Horse {
 
     const material = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      // the black steed has a glossy coat so moonlight picks out its shape
-      roughness: eyeGlow ? 0.34 : 0.62,
-      metalness: 0.02,
+      // the black steed has a glossy coat so moonlight picks out its shape;
+      // old Gunpowder's dusty coat is matte (a sheen on his broad barrel read
+      // as plastic and made the flanks look flat)
+      roughness: eyeGlow ? 0.34 : 0.92,
+      metalness: eyeGlow ? 0.02 : 0,
     });
     this.mesh = makeSkinnedMesh(sb.build(), material, [body], bones);
     this.group.add(this.mesh);

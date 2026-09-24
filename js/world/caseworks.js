@@ -193,7 +193,9 @@ export function buildCase(world) {
   rail.receiveShadow = true;
   group.add(rail);
 
-  // corner posts
+  // corner posts. They and the top frame cast no shadows: the moon hangs
+  // inside the case, so its light shouldn't be barred by the case's own frame
+  // (the top rail used to lay a long dark stripe down the village road).
   const f = CASE.frame;
   const postGeo = new THREE.BoxGeometry(f * 1.4, Hc, f * 1.4);
   const puv = postGeo.attributes.uv;
@@ -203,7 +205,6 @@ export function buildCase(world) {
     for (const sz of [-1, 1]) {
       const p = new THREE.Mesh(postGeo, wood);
       p.position.set(sx * CASE.hx, Hc / 2, sz * CASE.hz);
-      p.castShadow = true;
       group.add(p);
     }
   }
@@ -227,7 +228,6 @@ export function buildCase(world) {
     wood,
   );
   topFrame.position.y = Hc;
-  topFrame.castShadow = true;
   group.add(topFrame);
 
   // brass finials on the top corners
@@ -251,6 +251,7 @@ export function buildCase(world) {
   ];
   for (const p of panels) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(p.w, p.h), glass);
+    m.name = 'glass'; // promo capture hides the panes for shots inside the case
     m.position.set(...p.pos);
     m.rotation.set(...p.rot);
     m.userData.dynamic = true;
@@ -331,7 +332,8 @@ export function buildMoon(world) {
 
   const moon = new THREE.Mesh(
     new THREE.SphereGeometry(r, 48, 24),
-    new THREE.MeshBasicMaterial({ map: moonTexture(), color: new THREE.Color(1.6, 1.56, 1.4) }),
+    // bright enough to read as the moon without blooming into a lamp
+    new THREE.MeshBasicMaterial({ map: moonTexture(), color: new THREE.Color(1.0, 0.98, 0.9) }),
   );
   moon.position.y = -drop;
   moon.rotation.y = -0.8;
@@ -339,12 +341,12 @@ export function buildMoon(world) {
 
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({
     map: glowTexture(),
-    color: new THREE.Color(0.36, 0.4, 0.5),
+    color: new THREE.Color(0.13, 0.15, 0.2),
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     transparent: true,
   }));
-  halo.scale.set(3.0, 3.0, 1);
+  halo.scale.set(2.4, 2.4, 1);
   halo.position.y = -drop;
   pivot.add(halo);
 

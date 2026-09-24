@@ -2,7 +2,7 @@
 // runs the clockwork.
 
 import * as THREE from 'three';
-import { QUALITY } from './config.js';
+import { QUALITY, CAPTURE, CAPTURE_SIZE } from './config.js';
 import { createRenderer, createComposer, cameraFov } from './core/renderer.js';
 import { createLighting, createBackdrop, createRoomEnvironment, createSkyEnvironment } from './core/lighting.js';
 import { CaseControls } from './core/controls.js';
@@ -50,20 +50,21 @@ async function main() {
   clearTimeout(window.__loaderSlow);
   loader.classList.add('started');
   const canvas = document.getElementById('scene');
-  const music = new Music(); // starts downloading the track right away
+  const music = CAPTURE ? null : new Music(); // starts downloading the track right away
   const renderer = createRenderer(canvas);
   setMaxAnisotropy(Math.min(8, renderer.capabilities.getMaxAnisotropy()));
 
   const scene = new THREE.Scene();
-  const aspect = window.innerWidth / window.innerHeight;
+  const aspect = CAPTURE ? CAPTURE_SIZE.width / CAPTURE_SIZE.height : window.innerWidth / window.innerHeight;
   const camera = new THREE.PerspectiveCamera(cameraFov(aspect), aspect, 0.1, 200);
-  const { composer } = createComposer(renderer, scene, camera);
+  const { composer, mist } = createComposer(renderer, scene, camera);
 
   const sim = { running: true, time: 0, realTime: 0 };
   const world = {
     scene,
     camera,
     renderer,
+    mist, // the mist post-processing pass, given the terrain in buildAtmosphere
     sim,
     materials: {},
     updaters: [],
@@ -127,6 +128,15 @@ async function main() {
     await fn();
   }
   loaderFill.style.width = '100%';
+
+  if (CAPTURE) {
+    // promo video: frames are stepped and rendered on request, not by the clock
+    const { installCapture } = await import('./capture.js');
+    installCapture(world, composer);
+    loader.style.display = 'none';
+    window.__diorama = world;
+    return;
+  }
 
   const controls = new CaseControls(camera, canvas);
   world.controls = controls;

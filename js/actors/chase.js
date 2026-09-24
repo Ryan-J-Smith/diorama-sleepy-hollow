@@ -18,8 +18,9 @@ export function buildChase(world) {
   const L = layout.roadLength;
   const rng = new Rng(1790);
 
-  const gunpowder = new Horse({ coat: '#8e8a84', mane: '#5b4a38', blanket: '#6e2a1f', scale: 1.0, gaunt: 1 });
-  const steed = new Horse({ coat: '#141217', mane: '#08080a', blanket: '#1c1418', scale: 1.2, eyeGlow: 3.2, maneLength: 1.5 });
+  // seeded gallop phases so every visit (and every promo capture) matches
+  const gunpowder = new Horse({ coat: '#8e8a84', mane: '#5b4a38', blanket: '#6e2a1f', scale: 1.0, gaunt: 1, phase: rng.float() });
+  const steed = new Horse({ coat: '#141217', mane: '#08080a', blanket: '#1c1418', scale: 1.2, eyeGlow: 3.2, maneLength: 1.5, phase: rng.float() });
   gunpowder.group.rotation.order = 'YXZ';
   steed.group.rotation.order = 'YXZ';
   world.live.add(gunpowder.group, steed.group);
@@ -151,6 +152,11 @@ export function buildChase(world) {
       sI = s;
       sH = null;
       lastD = null;
+      // start the choreography afresh rather than mid-glance or mid-flourish
+      glanceLeft = 0;
+      ichabod.lookBack(false);
+      flourishTarget = 0;
+      horseman.flourish = 0;
     },
     peakS,
   };

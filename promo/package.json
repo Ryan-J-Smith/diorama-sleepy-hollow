@@ -1,0 +1,23 @@
+{
+  "name": "sleepy-hollow-promo",
+  "private": true,
+  "type": "module",
+  "description": "Promo video for the Sleepy Hollow diorama: frame capture (Playwright) and edit (Remotion).",
+  "scripts": {
+    "capture": "node capture.mjs --gpu",
+    "stills": "node capture.mjs --stills",
+    "studio": "remotion studio src/index.js",
+    "render": "remotion render src/index.js Promo out/promo.mp4"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.528",
+    "@remotion/google-fonts": "4.0.528",
+    "@remotion/transitions": "4.0.528",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "remotion": "4.0.528"
+  }
+}

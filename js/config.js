@@ -31,12 +31,17 @@ export const BASE = {
 
 export const TABLE_Y = -BASE.height - BASE.footHeight;
 
-const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-const small = typeof innerWidth === 'number' && Math.min(innerWidth, innerHeight) < 700;
+// Capture mode (?capture=1) renders fixed-size, deterministic frames for the
+// promo video: no interface, no music, no wall clock (see js/capture.js).
+export const CAPTURE = typeof location !== 'undefined' && new URLSearchParams(location.search).has('capture');
+export const CAPTURE_SIZE = { width: 1920, height: 1080 };
+
+const coarse = !CAPTURE && typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+const small = !CAPTURE && typeof innerWidth === 'number' && Math.min(innerWidth, innerHeight) < 700;
 
 export const QUALITY = {
   mobile: coarse || small,
-  pixelRatio: Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, coarse || small ? 1.5 : 2),
+  pixelRatio: CAPTURE ? 1 : Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, coarse || small ? 1.5 : 2),
   shadowSize: coarse || small ? 1024 : 2048,
   msaa: coarse || small ? 2 : 4,
 };

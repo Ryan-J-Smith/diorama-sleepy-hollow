@@ -190,44 +190,418 @@ export function shingleTexture() {
   });
 }
 
-export function stoneTexture() {
-  return cached('stone', () => {
-    const s = 256;
-    const c = makeCanvas(s, s);
-    const ctx = c.getContext('2d');
+/** Tileable value-noise fBm on an n x n grid, roughly in [-1, 1]. */
+function periodicNoise(rng, n, period, octaves) {
+  const out = new Float32Array(n * n);
+  const rows = new Float32Array(n * period * (1 << (octaves - 1)));
+  let amp = 1 / (2 - 2 ** (1 - octaves)); // octave weights 1, 1/2, ... normalized
+  let p = period;
+  for (let o = 0; o < octaves; o++) {
+    const lat = new Float32Array(p * p);
+    for (let i = 0; i < lat.length; i++) lat[i] = rng.float(-1, 1);
+    // interpolate each lattice row along x once...
+    for (let x = 0; x < n; x++) {
+      const fx = (x / n) * p;
+      const x0 = Math.floor(fx);
+      const x1 = x0 + 1 === p ? 0 : x0 + 1;
+      let t = fx - x0;
+      t = t * t * (3 - 2 * t);
+      for (let r = 0; r < p; r++) rows[r * n + x] = lat[r * p + x0] + (lat[r * p + x1] - lat[r * p + x0]) * t;
+    }
+    // ...then blend neighbouring rows down y
+    for (let y = 0; y < n; y++) {
+      const fy = (y / n) * p;
+      const y0 = Math.floor(fy);
+      let t = fy - y0;
+      t = t * t * (3 - 2 * t) * amp;
+      const r0 = y0 * n;
+      const r1 = (y0 + 1 === p ? 0 : y0 + 1) * n;
+      const row = y * n;
+      for (let x = 0; x < n; x++) out[row + x] += rows[r0 + x] * amp + (rows[r1 + x] - rows[r0 + x]) * t;
+    }
+    amp *= 0.5;
+    p *= 2;
+  }
+  return out;
+}
+
+// Hudson Valley fieldstone: grey gneiss and schist, buff sandstone, a few
+// rusty iron-stained and pinkish granite stones. [weight, sRGB]
+const FIELDSTONE = [
+  [0.25, [146, 144, 139]],
+  [0.14, [124, 128, 131]],
+  [0.13, [98, 95, 90]],
+  [0.17, [158, 147, 127]],
+  [0.12, [128, 112, 97]],
+  [0.1, [166, 162, 153]],
+  [0.09, [146, 133, 126]],
+];
+
+// One stone's record in a flat Float32Array (typed arrays keep the per-pixel
+// loop monomorphic, so the JIT optimizes it once and early).
+const ST = 26;
+const S_CX = 0;
+const S_CY = 1;
+const S_A = 2; // half width, px
+const S_B = 3; // half height, px
+const S_SHEAR = 4;
+const S_TAPER = 5;
+const S_TILT = 6;
+const S_R = 7; // four corner radii
+const S_IBEVEL = 11;
+const S_TOP = 12;
+const S_DOME = 13;
+const S_TX = 14;
+const S_TY = 15;
+const S_COL = 16; // rgb
+const S_LICH = 19; // rgb
+const S_LAMT = 22;
+const S_LOFF = 23;
+const S_IA = 24;
+const S_IB = 25;
+
+/**
+ * Rough-coursed rubble fieldstone, like the Old Dutch Church: flattish stones
+ * of mixed size in wandering courses, some running up through two courses,
+ * small ones stacked as chinking, set in thick recessed lime mortar, with
+ * lichen on some stones and moss in the damp joints.
+ *
+ * Each stone is a rounded trapezoid inside its slot (the side joints slant),
+ * so a pixel only has to test the one stone its slot holds. The same pass
+ * writes a height field that becomes a tangent-space normal map, so moonlight
+ * and lanterns pick out the stones. Tiles both ways.
+ * Returns { map, normalMap }; the map is tinted by the material color.
+ */
+export function stoneMaps() {
+  return cached('stoneMaps', () => {
+    const S = 512;
+    // noise: edge wobble at half resolution, the slow fields at quarter; the
+    // warp and mottle tables are each read twice, at an offset, for x and y
+    // (and for mottle and moss), which halves the cost of making them
+    const nrng = new Rng(5);
+    const n = S >> 1;
+    const q = S >> 2;
+    const warp = periodicNoise(nrng, q, 3, 2);
+    const edgeN = periodicNoise(nrng, n, 22, 1);
+    const mottle = periodicNoise(nrng, q, 8, 2);
     const rng = new Rng(4);
-    ctx.fillStyle = '#4a4744';
-    ctx.fillRect(0, 0, s, s);
-    const cells = 7;
-    const cw = s / cells;
-    for (let gy = -1; gy <= cells; gy++) {
-      for (let gx = -1; gx <= cells; gx++) {
-        const cx = (gx + 0.5 + rng.float(-0.2, 0.2)) * cw + (gy % 2 ? cw * 0.5 : 0);
-        const cy = (gy + 0.5 + rng.float(-0.15, 0.15)) * cw;
-        const rx = cw * rng.float(0.38, 0.5);
-        const ry = cw * rng.float(0.3, 0.44);
-        const v = Math.floor(rng.float(120, 200));
-        for (const [ox, oy] of [[0, 0], [s, 0], [-s, 0], [0, s], [0, -s]]) {
-          const g = ctx.createRadialGradient(cx + ox - rx * 0.3, cy + oy - ry * 0.3, 1, cx + ox, cy + oy, Math.max(rx, ry));
-          g.addColorStop(0, `rgb(${v + 25},${v + 22},${v + 18})`);
-          g.addColorStop(1, `rgb(${v * 0.7},${v * 0.68},${v * 0.64})`);
-          ctx.fillStyle = g;
-          ctx.beginPath();
-          const steps = 9;
-          for (let k = 0; k <= steps; k++) {
-            const a = (k / steps) * Math.PI * 2;
-            const r = 1 + 0.12 * perlin2(gx * 3.1 + k * 0.7, gy * 2.3);
-            const px = cx + ox + Math.cos(a) * rx * r;
-            const py = cy + oy + Math.sin(a) * ry * r;
-            if (k === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-          }
-          ctx.fill();
+
+    const pickColor = () => {
+      let r = rng.next();
+      let c = FIELDSTONE[0][1];
+      for (const [w, col] of FIELDSTONE) {
+        if ((r -= w) < 0) {
+          c = col;
+          break;
         }
       }
+      const v = rng.float(0.88, 1.08);
+      return [c[0] * v, c[1] * v, c[2] * v];
+    };
+
+    // Stone 0 is "no stone": a slot too cramped for one stays mortar.
+    const stones = [new Float32Array(ST)];
+    stones[0][S_A] = -1e4;
+    stones[0][S_B] = -1e4;
+    // One stone in the slot between two slanted joints x = L + sL * (y - ym)
+    // and x = R + sR * (y - ym), bedded between y0 and y1. Returns its index.
+    const makeStone = (L, sL, R, sR, ym, y0, y1) => {
+      const hh = y1 - y0;
+      const iL = rng.float(3.2, 6);
+      const iR = rng.float(3.2, 6);
+      let iT = Math.max(2.8, rng.float(0.09, 0.18) * hh);
+      let iB = Math.max(2.8, rng.float(0.09, 0.18) * hh);
+      if (hh > 28 && rng.chance(0.3)) {
+        // a smaller stone that leaves a fat mortar joint above or below
+        const extra = rng.float(0.05, 0.16) * hh;
+        if (rng.chance(0.5)) iT += extra;
+        else iB += extra;
+      }
+      const cy = (y0 + iT + y1 - iB) / 2;
+      const b = (y1 - iB - y0 - iT) / 2;
+      const l0 = L + sL * (cy - ym) + iL;
+      const r0 = R + sR * (cy - ym) - iR;
+      const a = (r0 - l0) / 2;
+      if (a < 4 || b < 4) return 0;
+      const m = Math.min(a, b);
+      const s = new Float32Array(ST);
+      s[S_CX] = (l0 + r0) / 2;
+      s[S_CY] = cy;
+      s[S_A] = a;
+      s[S_B] = b;
+      s[S_SHEAR] = (sL + sR) / 2;
+      s[S_TAPER] = (sR - sL) / 2 / a; // change of half width per px of y, relative
+      s[S_TILT] = rng.float(-1, 1) * Math.min(0.09, Math.max(0, Math.min(iT, iB) - 2.6) / a);
+      for (let c = 0; c < 4; c++) s[S_R + c] = rng.float(0.12, 0.6) * m;
+      s[S_IBEVEL] = 1 / rng.float(2.5, 6);
+      s[S_TOP] = rng.float(0.6, 1.0);
+      s[S_DOME] = rng.float(0, 0.15);
+      s[S_TX] = rng.float(-0.2, 0.2) / a;
+      s[S_TY] = rng.float(-0.16, 0.16) / b;
+      s.set(pickColor(), S_COL);
+      if (rng.chance(0.3)) {
+        s.set(rng.chance(0.7) ? [166, 170, 144] : [174, 162, 112], S_LICH);
+        s[S_LAMT] = 0.6;
+      }
+      s[S_LOFF] = rng.float(-0.3, 0.05);
+      s[S_IA] = 1 / a;
+      s[S_IB] = 1 / b;
+      stones.push(s);
+      return stones.length - 1;
+    };
+
+    // --- lay the courses ------------------------------------------------------
+    const heights = [];
+    let sum = 0;
+    while (sum < S - 24) {
+      const h = rng.float(24, 44);
+      heights.push(h);
+      sum += h;
     }
-    return toTexture(c);
+    const fit = S / sum;
+    const courseOf = new Int16Array(S);
+    const courses = [];
+    let y0 = 0;
+    let reserved = []; // tall stones from the course below
+    heights.forEach((h0, k) => {
+      const H = h0 * fit;
+      const y1 = y0 + H;
+      const ym = y0 + H / 2;
+      const last = k === heights.length - 1;
+      const joints = []; // { x (on the course centre line), s (slant) }
+      const fills = []; // per slot: { a, b, split } stone indices, or { tall }
+      const nextReserved = [];
+      const slant = () => rng.float(-0.32, 0.32);
+      // fill [from, to) with ordinary slots; the joints at both ends are given
+      const fillRun = (from, sFrom, to, sTo) => {
+        const len = to - from;
+        if (len < 1) return; // two tall stones share this joint
+        const widths = [];
+        let x = 0;
+        while (x < len - H * 0.8) {
+          const r = rng.next();
+          const w = H * (r < 0.16 ? rng.float(0.8, 1.1) : r < 0.72 ? rng.float(1.2, 2.1) : rng.float(2.1, 3.2));
+          widths.push(w);
+          x += w;
+        }
+        if (!widths.length) widths.push(len);
+        const f = len / widths.reduce((p, w) => p + w, 0);
+        let at = from;
+        let sPrev = sFrom;
+        widths.forEach((w0, j) => {
+          const w = w0 * f;
+          // keep both ends of the stone a decent width
+          const lim = (0.9 * w) / H;
+          const sNext = j === widths.length - 1 ? sTo : Math.max(sPrev - lim, Math.min(sPrev + lim, slant()));
+          const L = at;
+          const R = at + w;
+          joints.push({ x: L, s: sPrev });
+          if (!last && w > H * 1.15 && w < H * 2.6 && rng.chance(0.13)) {
+            // a tall stone that runs up through the next course
+            const t = { L, sL: sPrev, R, sR: sNext, ym, y0, stone: 0 };
+            nextReserved.push(t);
+            fills.push({ tall: t });
+          } else if (w < H * 1.9 && H > 33 && rng.chance(0.2)) {
+            // two small stones stacked in one slot
+            const split = y0 + H * rng.float(0.4, 0.6);
+            fills.push({ a: makeStone(L, sPrev, R, sNext, ym, y0, split), b: makeStone(L, sPrev, R, sNext, ym, split, y1), split });
+          } else {
+            const a = makeStone(L, sPrev, R, sNext, ym, y0, y1);
+            fills.push({ a, b: a, split: 1e9 });
+          }
+          at = R;
+          sPrev = sNext;
+        });
+      };
+      if (reserved.length) {
+        // carry the tall stones' joints up into this course and fill between them
+        const res = reserved
+          .map((t) => ({ t, Lc: t.L + t.sL * (ym - t.ym), Rc: t.R + t.sR * (ym - t.ym) }))
+          .sort((p, r) => p.Lc - r.Lc);
+        res.forEach(({ t, Lc, Rc }, j) => {
+          joints.push({ x: Lc, s: t.sL });
+          t.stone = makeStone(t.L, t.sL, t.R, t.sR, t.ym, t.y0, y1);
+          fills.push({ a: t.stone, b: t.stone, split: 1e9 });
+          const next = res[(j + 1) % res.length];
+          fillRun(Rc, t.sR, j + 1 < res.length ? next.Lc : next.Lc + S, next.t.sL);
+        });
+      } else {
+        const start = rng.float(0, S);
+        const s0 = slant();
+        fillRun(start, s0, start + S, s0);
+      }
+      const shift = Math.floor(joints[0].x / S) * S;
+      if (shift) for (const jt of joints) jt.x -= shift;
+      courses.push({ ym, joints, fills });
+      for (let py = Math.floor(y0); py < Math.min(S, Math.ceil(y1)); py++) courseOf[py] = k;
+      reserved = nextReserved;
+      y0 = y1;
+    });
+    // Pack each course into typed arrays, slots numbered 1..m with a sentinel
+    // at each end (slot 0 = slot m moved left by S, slot m + 1 = slot 1 moved
+    // right), so the per-pixel step across a slanted joint never wraps.
+    const packed = courses.map((c) => {
+      const m = c.joints.length;
+      const jx = new Float32Array(m + 3);
+      const js = new Float32Array(m + 3);
+      const fab = new Int32Array((m + 2) * 2); // stone below / above a split
+      const fs = new Float32Array(m + 2);
+      for (let j = 0; j < m + 3; j++) {
+        const src = c.joints[(j - 1 + m) % m];
+        jx[j] = src.x + (j === 0 ? -S : j > m ? S : 0);
+        js[j] = src.s;
+      }
+      for (let j = 0; j < m + 2; j++) {
+        const f = c.fills[(j - 1 + m) % m];
+        // the lower half of a tall stone is the stone built with the course above
+        fab[j * 2] = f.tall ? f.tall.stone : f.a;
+        fab[j * 2 + 1] = f.tall ? f.tall.stone : f.b;
+        fs[j] = f.tall ? 1e9 : f.split;
+      }
+      const slotOf = new Int16Array(S);
+      for (let j = 1; j <= m; j++) {
+        for (let px = Math.ceil(jx[j]); px < jx[j + 1]; px++) slotOf[((px % S) + S) % S] = j;
+      }
+      return { ym: c.ym, base: jx[1], jx, js, fab, fs, slotOf };
+    });
+    const st = new Float32Array(stones.length * ST);
+    stones.forEach((s, i) => st.set(s, i * ST));
+
+    // --- paint colour and height, and normals a row behind ------------------------
+    const map = makeCanvas(S, S);
+    const mctx = map.getContext('2d');
+    const img = mctx.createImageData(S, S);
+    const nmap = makeCanvas(S, S);
+    const nctx = nmap.getContext('2d');
+    const nimg = nctx.createImageData(S, S);
+    const height = new Float32Array(S * S);
+    // fine grain in the stone and sand, from a small tile of random values
+    const grain = new Float32Array(4096);
+    for (let i = 0; i < grain.length; i++) grain[i] = nrng.next() - 0.5;
+    const env = { S, n, q, warp, edgeN, mottle, grain, courseOf, packed, st, height, rgba: img.data };
+    for (let y = 0; y < S; y++) {
+      paintStoneRow(y, env);
+      if (y >= 2) stoneNormalRow(y - 1, S, height, nimg.data);
+    }
+    stoneNormalRow(S - 1, S, height, nimg.data);
+    stoneNormalRow(0, S, height, nimg.data);
+    mctx.putImageData(img, 0, 0);
+    nctx.putImageData(nimg, 0, 0);
+    return { map: toTexture(map), normalMap: toTexture(nmap, { srgb: false }) };
   });
+}
+
+/** One row of the fieldstone: color into env.rgba, relief into env.height. */
+function paintStoneRow(y, env) {
+  const { S, n, q, warp, edgeN, mottle, grain, courseOf, packed, st, height, rgba } = env;
+  const qh = q >> 1;
+  const qm = q - 1;
+  const nrow = (y >> 1) * n;
+  const qy = y >> 2;
+  const qrow = qy * q;
+  const qrow2 = ((qy + qh) & qm) * q;
+  const qrow3 = ((qy + (qh >> 1)) & qm) * q;
+  const invS = 1 / S;
+  const grow = (y & 63) << 6;
+  for (let x = 0; x < S; x++) {
+    const i = y * S + x;
+    const ni = nrow + (x >> 1);
+    const qx = x >> 2;
+    const qi = qrow + qx;
+    const gr = grain[grow + (x & 63)];
+    // wander the courses and joints a little
+    let yy = y + warp[qrow2 + ((qx + qh) & qm)] * 6;
+    yy -= S * Math.floor(yy * invS);
+    let xx = x + warp[qi] * 9;
+    xx -= S * Math.floor(xx * invS);
+    // slot on the course centre line, then step across a slanted joint
+    const C = packed[courseOf[yy | 0]];
+    const dyc = yy - C.ym;
+    const jx = C.jx;
+    const js = C.js;
+    let j = C.slotOf[xx | 0];
+    const u = xx < C.base ? xx + S : xx;
+    if (u < jx[j] + js[j] * dyc) j--;
+    else if (u >= jx[j + 1] + js[j + 1] * dyc) j++;
+    const k = C.fab[j * 2 + (yy >= C.fs[j] ? 1 : 0)] * ST;
+    // stone-local coordinates (wrapped), with the trapezoid and bed tilt undone
+    let dx = u - st[k + S_CX];
+    dx -= S * Math.round(dx * invS);
+    let dy = yy - st[k + S_CY];
+    dy -= S * Math.round(dy * invS);
+    const sx = (dx - st[k + S_SHEAR] * dy) / (1 + st[k + S_TAPER] * dy);
+    const sy = dy - st[k + S_TILT] * sx;
+    // signed distance to a rounded rectangle, px (negative inside)
+    const cr = st[k + S_R + (sx > 0 ? 0 : 2) + (sy > 0 ? 0 : 1)];
+    const ax = (sx < 0 ? -sx : sx) - (st[k + S_A] - cr);
+    const ay = (sy < 0 ? -sy : sy) - (st[k + S_B] - cr);
+    const d = (ax > 0 && ay > 0 ? Math.sqrt(ax * ax + ay * ay) : ax > ay ? ax : ay) - cr + edgeN[ni] * 2.4;
+
+    const mt = mottle[qi];
+    const mz = mottle[qrow3 + ((qx + qh) & qm)]; // damp patches: moss, and no lichen
+    // mortar: lime and sand with moss in damp patches, shadowed beside stones
+    const ao = d <= 0 ? 0 : d < 3.4 ? d * 0.294 : 1;
+    const mossT = mz <= 0.16 ? 0 : mz > 0.577 ? 0.6 : (mz - 0.16) * 1.44;
+    const mShade = 0.6 + 0.26 * ao + mt * 0.08 + gr * 0.1;
+    let red = (156 - 76 * mossT) * mShade;
+    let grn = (148 - 58 * mossT) * mShade;
+    let blu = (132 - 76 * mossT) * mShade;
+    let h = 0.06 + gr * 0.03 + mt * 0.02 + ao * 0.04;
+    if (d < 0.5) {
+      // a rounded edge rising to a flattish, slightly tilted face
+      const e = -d * st[k + S_IBEVEL];
+      const prof = e <= 0 ? 0 : e >= 1 ? 1 : Math.sqrt(e * (2 - e));
+      const ux = sx * st[k + S_IA];
+      const uy = sy * st[k + S_IB];
+      const dome = st[k + S_DOME] * (1 - ux * ux) * (1 - uy * uy);
+      const hs = 0.1 + (st[k + S_TOP] - 0.1 + dome + sx * st[k + S_TX] + sy * st[k + S_TY] + mt * 0.07) * prof + gr * 0.012;
+      const shade = (0.86 + 0.14 * prof) * (1 + mt * 0.13 + gr * 0.08);
+      // lichen on the faces of some stones, where the growth field is low
+      const l = st[k + S_LOFF] - mz;
+      const lt = (l <= 0.1 ? 0 : l > 0.433 ? 1 : (l - 0.1) * 3) * st[k + S_LAMT] * prof;
+      const sr = st[k + S_COL] * shade;
+      const sg = st[k + S_COL + 1] * shade;
+      const sb = st[k + S_COL + 2] * shade;
+      // one-pixel blend across the edge
+      const t = d < -0.5 ? 1 : 0.5 - d;
+      red += (sr + (st[k + S_LICH] - sr) * lt - red) * t;
+      grn += (sg + (st[k + S_LICH + 1] - sg) * lt - grn) * t;
+      blu += (sb + (st[k + S_LICH + 2] - sb) * lt - blu) * t;
+      h += (hs - h) * t;
+    }
+    height[i] = h;
+    const o = i * 4;
+    rgba[o] = red;
+    rgba[o + 1] = grn;
+    rgba[o + 2] = blu;
+    rgba[o + 3] = 255;
+  }
+}
+
+/** Tangent-space normals for one row of the height field (+v is up the canvas). */
+function stoneNormalRow(y, S, height, out) {
+  const relief = 3.2;
+  const up = ((y - 1 + S) % S) * S;
+  const dn = ((y + 1) % S) * S;
+  const row = y * S;
+  for (let x = 0; x < S; x++) {
+    const nx = -(height[row + (x === S - 1 ? 0 : x + 1)] - height[row + (x === 0 ? S - 1 : x - 1)]) * relief;
+    const ny = (height[dn + x] - height[up + x]) * relief;
+    const inv = 1 / Math.sqrt(nx * nx + ny * ny + 1);
+    const o = (row + x) * 4;
+    out[o] = (nx * inv * 0.5 + 0.5) * 255;
+    out[o + 1] = (ny * inv * 0.5 + 0.5) * 255;
+    out[o + 2] = (inv * 0.5 + 0.5) * 255;
+    out[o + 3] = 255;
+  }
+}
+
+export function stoneTexture() {
+  return stoneMaps().map;
+}
+
+export function stoneNormalTexture() {
+  return stoneMaps().normalMap;
 }
 
 export function plankTexture() {

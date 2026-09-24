@@ -3,7 +3,7 @@
 // Local frame: front wall faces +z, ridge runs along x, ground at y = 0.
 
 import * as THREE from 'three';
-import { boxUV, prism } from '../util/geom.js';
+import { boxUV, prism, paint, mergeAll } from '../util/geom.js';
 import { windowAtlas } from '../util/textures.js';
 import { Rng } from '../util/rng.js';
 import { surface, plain } from './kit.js';
@@ -84,6 +84,7 @@ export function makeBuilding(spec) {
     litChance: 0.8,
     wallScale: 2.2,
     frontWindows: null,
+    backWindows: null,
     sideWindows: null,
     gableWindows: true,
     seed: 1,
@@ -128,6 +129,46 @@ export function makeBuilding(spec) {
     }
   }
 
+  // stone houses: dressed quoins up the corners, long and short in turn, and
+  // lintel stones over the openings (added with the windows and door below).
+  // More Georgian than first-colonies, so they're kept quiet: only a shade
+  // lighter than the rubble walls and barely proud of them.
+  const stoneWalls = s.wall === 'stone';
+  const dressedMat = plain('#776f63', { roughness: 0.94, flat: true, vertexColors: true });
+  const qrng = new Rng(s.seed * 131 + 7);
+  const dressedStone = (sx, sy, sz, x = 0, y = 0, z = 0) => {
+    const v = qrng.float(0.8, 1.0);
+    const tone = new THREE.Color(v, v * qrng.float(0.97, 1.01), v * qrng.float(0.92, 0.99));
+    return paint(new THREE.BoxGeometry(sx, sy, sz).translate(x, y, z), tone);
+  };
+  if (stoneWalls) {
+    const quoins = [];
+    const proud = 0.005;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const h = sz < 0 ? chain[0][1] : wallH;
+        const n = Math.max(3, Math.round(h / 0.07));
+        const bh = h / n;
+        for (let k = 0; k < n; k++) {
+          const y = (k + 0.5) * bh;
+          const long = 0.11 + qrng.float(-0.02, 0.008);
+          const short = 0.065 + qrng.float(-0.012, 0.01);
+          const [lx, lz] = (k + (sx * sz > 0 ? 0 : 1)) % 2 ? [short, long] : [long, short];
+          // roughly dressed: each stands a little more or less proud, a little uneven
+          const p = proud + qrng.float(-0.003, 0.003);
+          const bhk = bh - qrng.float(0.006, 0.011);
+          const yk = y + qrng.float(-0.002, 0.002);
+          // one face of the quoin on each wall, wrapping the corner
+          quoins.push(dressedStone(lx, bhk, p + 0.01, sx * (hw + p - lx / 2), yk, sz * (hd + p / 2 - 0.005)));
+          quoins.push(dressedStone(p + 0.01, bhk, lz, sx * (hw + p / 2 - 0.005), yk, sz * (hd + p - lz / 2)));
+        }
+      }
+    }
+    const q = new THREE.Mesh(mergeAll(quoins), dressedMat);
+    q.castShadow = true;
+    group.add(q);
+  }
+
   // --- roof slabs -----------------------------------------------------------
   const thick = 0.045;
   const eave = 0.09;
@@ -165,7 +206,7 @@ export function makeBuilding(spec) {
   group.add(ridge);
 
   // --- foundation -----------------------------------------------------------
-  const found = new THREE.Mesh(boxUV(new THREE.BoxGeometry(w + 0.05, 0.5, d + 0.05), 2.4), stoneMat);
+  const found = new THREE.Mesh(boxUV(new THREE.BoxGeometry(w + 0.05, 0.5, d + 0.05), 1.6), stoneMat);
   found.position.y = -0.2;
   found.receiveShadow = true;
   group.add(found);
@@ -203,6 +244,7 @@ export function makeBuilding(spec) {
     place(pane, face, u, y, 0.015);
     const sill = new THREE.Mesh(new THREE.BoxGeometry(ww + 0.06, 0.018, 0.04), trimMat);
     place(sill, face, u, y - wh / 2 - 0.02, 0.012);
+    if (stoneWalls) place(new THREE.Mesh(dressedStone(ww + 0.07, 0.034, 0.022), dressedMat), face, u, y + wh / 2 + 0.036, 0.004);
     if (shutters && s.shutterColor) {
       const sm = plain(s.shutterColor, { roughness: 0.85 });
       for (const side of [-1, 1]) {
@@ -228,13 +270,28 @@ export function makeBuilding(spec) {
     return topY < Math.min(roofHeightAt(chain, z - WIN_W / 2), roofHeightAt(chain, z + WIN_W / 2));
   };
 
+  // how far a window reaches either side of its centre (shutters, or else its
+  // sill and lintel), and how far windows must keep from the door's centre:
+  // its trim (or stone lintel) plus a little bare wall
+  const winReach = s.shutterColor ? WIN_W * 0.75 + 0.045 : (WIN_W + 0.07) / 2;
+  const doorClear = (stoneWalls ? (doorW + 0.12) / 2 : (doorW + 0.05) / 2) + 0.02;
+
   const layoutFace = (face, count, story) => {
     const f = faces[face];
     const usable = f.len - 0.3;
     const positions = [];
     for (let k = 0; k < count; k++) positions.push(-usable / 2 + ((k + 0.5) / count) * usable);
-    for (const u of positions) {
-      if (story === 0 && face === doorFace && Math.abs(u) < doorW * 0.9) continue;
+    for (let u of positions) {
+      if (story === 0 && face === doorFace) {
+        if (Math.abs(u) < doorW * 0.9) continue; // the door's own slot
+        // slide windows out until their shutters clear the doorway; leave one
+        // out if the wall hasn't room for it
+        const minU = doorClear + winReach;
+        if (Math.abs(u) < minU) {
+          if (minU + winReach > f.len / 2 - 0.035) continue;
+          u = Math.sign(u) * minU;
+        }
+      }
       const y = floorY(story);
       if (!fits(face, u, y)) continue;
       addWindow(face, u, y, story);
@@ -242,10 +299,11 @@ export function makeBuilding(spec) {
   };
 
   const frontCount = s.frontWindows ?? Math.max(2, Math.round(w / 0.36));
+  const backCount = s.backWindows ?? Math.max(1, frontCount - 1);
   const sideCount = s.sideWindows ?? Math.max(1, Math.round(d / 0.5));
   for (let story = 0; story < s.stories; story++) {
     layoutFace('front', story === 0 && doorFace === 'front' ? frontCount + (frontCount % 2 === 0 ? 1 : 0) : frontCount, story);
-    layoutFace('back', Math.max(1, frontCount - 1), story);
+    layoutFace('back', backCount, story);
     layoutFace('right', sideCount, story);
     layoutFace('left', sideCount, story);
   }
@@ -268,10 +326,10 @@ export function makeBuilding(spec) {
     place(frame, doorFace, 0, doorH / 2 + 0.02, 0);
     const leaf = new THREE.Mesh(new THREE.PlaneGeometry(doorW, doorH), dMat);
     place(leaf, doorFace, 0, doorH / 2 + 0.02, 0.012);
-    // glowing transom over the door
-    const transom = new THREE.Mesh(atlasPlane(doorW, 0.05, 0, [0.1, 0.55], [0.9, 0.75]), lower);
-    place(transom, doorFace, 0, doorH + 0.06, 0.012);
-    const step = new THREE.Mesh(boxUV(new THREE.BoxGeometry(doorW + 0.14, 0.05, 0.12), 3), stoneMat);
+    // no transom lights: they'd be rare in the 1790s, and never on the church
+    if (stoneWalls) place(new THREE.Mesh(dressedStone(doorW + 0.12, 0.038, 0.022), dressedMat), doorFace, 0, doorH + 0.059, 0.004);
+    // a big flat doorstone rather than a patch of small ones
+    const step = new THREE.Mesh(boxUV(new THREE.BoxGeometry(doorW + 0.14, 0.05, 0.12), 1.2), stoneMat);
     place(step, doorFace, 0, 0.02, 0.06);
     const f = faces[doorFace];
     door = {
@@ -289,7 +347,7 @@ export function makeBuilding(spec) {
     const x = where === 'left' ? -hw + 0.14 : where === 'right' ? hw - 0.14 : 0;
     const z = top[0];
     const h = peakY + 0.2;
-    const ch = new THREE.Mesh(boxUV(new THREE.BoxGeometry(0.16, h - wallH * 0.5, 0.18), 3), stoneMat);
+    const ch = new THREE.Mesh(boxUV(new THREE.BoxGeometry(0.16, h - wallH * 0.5, 0.18), 2.2), stoneMat);
     ch.position.set(x, wallH * 0.5 + (h - wallH * 0.5) / 2, z);
     ch.castShadow = true;
     group.add(ch);

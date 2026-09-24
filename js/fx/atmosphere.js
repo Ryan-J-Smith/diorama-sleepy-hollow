@@ -6,7 +6,6 @@ import { WATER_Y, CASE, TERRAIN } from '../config.js';
 import { Particles } from './particles.js';
 import { puffTexture } from '../util/textures.js';
 import { Rng } from '../util/rng.js';
-import { CHURCHYARD } from '../world/layout.js';
 
 // ---------------------------------------------------------------------------
 // Falling leaves
@@ -117,54 +116,15 @@ function buildLeaves(world) {
 // ---------------------------------------------------------------------------
 // Mist and smoke
 
+/**
+ * The mist itself is a post-processing pass (fx/mist.js) marched through the
+ * scene depth; here it learns the lie of the land and drifts on the
+ * simulation clock, so captured frames come out the same every time.
+ */
 function buildMist(world) {
-  const { layout } = world;
-  const rng = new Rng(5);
-  const mist = new Particles(90, { texture: puffTexture(), renderOrder: 4 });
-  world.live.add(mist.mesh);
-  const color = new THREE.Color(0.5, 0.56, 0.68);
-
-  // where mist gathers: the river, the churchyard, the hollow at the hills' foot
-  const spots = [];
-  for (let i = 0; i < layout.streamX.length; i += 6) spots.push([layout.streamX[i], layout.streamZ[i], 0.5]);
-  for (let k = 0; k < 10; k++) spots.push([rng.float(CHURCHYARD.x0, CHURCHYARD.x1), rng.float(CHURCHYARD.z0, CHURCHYARD.z1), 0.4]);
-  for (let k = 0; k < 10; k++) spots.push([rng.float(-6, 6), rng.float(-3.6, -3.2), 0.6]);
-
-  const spawn = (initial) => {
-    const [x, z, spread] = rng.pick(spots);
-    const px = x + rng.float(-spread, spread);
-    const pz = z + rng.float(-spread, spread);
-    if (Math.abs(px) > TERRAIN.hx - 0.8 || Math.abs(pz) > TERRAIN.hz - 0.8) return;
-    const life = rng.float(14, 24);
-    const p = mist.spawn({
-      x: px,
-      y: Math.max(layout.heightAt(px, pz), WATER_Y) + rng.float(0.1, 0.25),
-      z: pz,
-      vx: rng.float(0.01, 0.04),
-      vz: rng.float(-0.015, 0.015),
-      life,
-      size0: rng.float(0.9, 1.3),
-      size1: rng.float(1.5, 2.2),
-      color,
-      alpha0: rng.float(0.12, 0.2),
-      alpha1: 0,
-      fadeIn: 4,
-      rot: rng.float(0, 6),
-      spin: rng.float(-0.05, 0.05),
-    });
-    if (p && initial) p.age = rng.float(0, life * 0.6);
-  };
-  for (let k = 0; k < 70; k++) spawn(true);
-  let acc = 0;
-  world.addUpdater((dt) => {
-    if (dt <= 0) return;
-    acc += dt;
-    while (acc > 0.25) {
-      acc -= 0.25;
-      if (mist.items.length < 80) spawn(false);
-    }
-    mist.update(dt);
-  });
+  world.mist.setTerrain(world.layout);
+  world.mist.setMoon(world.lights.moon);
+  world.addUpdater((dt, t) => world.mist.setTime(t));
 }
 
 function buildSmoke(world) {

@@ -2,8 +2,9 @@
 // vanish "in a flash of fire and brimstone".
 
 import * as THREE from 'three';
-import { boxUV } from '../util/geom.js';
+import { boxUV, mergeAll, paint } from '../util/geom.js';
 import { signTexture } from '../util/textures.js';
+import { Rng } from '../util/rng.js';
 import { surface, plain } from './kit.js';
 import { makeLantern, groundGlow } from './props.js';
 
@@ -149,7 +150,7 @@ export function buildBridge(world) {
 
   // stone abutments at each end
   for (const sx of [-1, 1]) {
-    const ab = new THREE.Mesh(boxUV(new THREE.BoxGeometry(0.5, 0.62, WI + 0.36), 2.2), stone);
+    const ab = new THREE.Mesh(boxUV(new THREE.BoxGeometry(0.5, 0.62, WI + 0.36), 1.4), stone);
     ab.position.set(sx * (L / 2 - 0.2), -0.37, 0);
     ab.receiveShadow = true;
     ab.castShadow = true;
@@ -184,7 +185,8 @@ export function buildStoneBridge(world) {
   g.rotation.y = Math.atan2(-br.tz, br.tx);
 
   const stone = surface('stone', '#958d80', { roughness: 0.95 });
-  const ringStone = surface('stone', '#b3aa98', { roughness: 0.95 });
+  // dressed arch stones: faceted and plain, tinted stone by stone
+  const ringStone = plain('#b3aa98', { roughness: 0.9, flat: true, vertexColors: true });
   const coping = surface('stone', '#7a746a', { roughness: 0.9 });
 
   const humpSpan = br.halfLen + 0.25;
@@ -225,22 +227,45 @@ export function buildStoneBridge(world) {
   hole.lineTo(span, -0.48);
   hole.lineTo(-span, -0.48);
   body.holes.push(hole);
-  const bodyGeo = boxUV(new THREE.ExtrudeGeometry(body, { depth: width, bevelEnabled: false }).translate(0, 0, -width / 2), 2.4);
+  const bodyGeo = boxUV(new THREE.ExtrudeGeometry(body, { depth: width, bevelEnabled: false }).translate(0, 0, -width / 2), 1.5);
   const bodyMesh = new THREE.Mesh(bodyGeo, stone);
   bodyMesh.castShadow = true;
   bodyMesh.receiveShadow = true;
   g.add(bodyMesh);
 
-  // lighter voussoir ring around the arch, standing slightly proud
-  const ring = new THREE.Shape();
-  const outer = arc(R + 0.075);
-  const inner = arc(R).reverse();
-  ring.moveTo(outer[0][0], outer[0][1]);
-  for (const [x, y] of outer) ring.lineTo(x, y);
-  for (const [x, y] of inner) ring.lineTo(x, y);
-  ring.lineTo(outer[0][0], outer[0][1]);
-  const ringGeo = boxUV(new THREE.ExtrudeGeometry(ring, { depth: width + 0.024, bevelEnabled: false }).translate(0, 0, -(width + 0.024) / 2), 3.2);
-  g.add(new THREE.Mesh(ringGeo, ringStone));
+  // lighter voussoir ring around the arch, standing slightly proud: separate
+  // wedge stones with a keystone, each a touch different in size and tone
+  const rng = new Rng(186);
+  const count = 13;
+  const joint = 0.011 / R; // angular width of a mortar joint
+  const r0 = R - 0.003; // a hair inside the barrel, so the soffits never fight
+  const voussoirs = [];
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < count; k++) {
+      const b0 = a0 + ((a1 - a0) * k) / count + joint / 2;
+      const b1 = a0 + ((a1 - a0) * (k + 1)) / count - joint / 2;
+      const key = k === (count - 1) / 2;
+      const r1 = R + 0.075 * (key ? 1.3 : rng.float(0.88, 1.12));
+      const sh = new THREE.Shape();
+      const pts = [];
+      for (let i = 0; i <= 2; i++) pts.push([Math.cos(b0 + ((b1 - b0) * i) / 2), Math.sin(b0 + ((b1 - b0) * i) / 2)]);
+      sh.moveTo(pts[0][0] * r0, cy + pts[0][1] * r0);
+      for (const [c, s] of pts.slice(1)) sh.lineTo(c * r0, cy + s * r0);
+      for (const [c, s] of pts.slice().reverse()) sh.lineTo(c * r1, cy + s * r1);
+      sh.lineTo(pts[0][0] * r0, cy + pts[0][1] * r0);
+      // each stone sits proud of the face by a slightly different amount
+      const proud = rng.float(0.008, 0.016);
+      const depth = 0.07;
+      const vg = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 1 });
+      vg.translate(0, 0, side * (width / 2 + proud) - (side > 0 ? depth : 0));
+      const v = rng.float(0.84, 1.08);
+      voussoirs.push(paint(vg, new THREE.Color(v, v * rng.float(0.97, 1.01), v * rng.float(0.92, 0.99))));
+    }
+  }
+  const ring = new THREE.Mesh(mergeAll(voussoirs), ringStone);
+  ring.castShadow = true;
+  ring.receiveShadow = true;
+  g.add(ring);
 
   // parapet walls following the hump, with a coping course
   const band = (y0, y1, thickness, mat, zc) => {
@@ -255,7 +280,7 @@ export function buildStoneBridge(world) {
       const x = -half + (2 * half * i) / n;
       sh.lineTo(x, top(x) + y1);
     }
-    const geo = boxUV(new THREE.ExtrudeGeometry(sh, { depth: thickness, bevelEnabled: false }).translate(0, 0, zc - thickness / 2), 2.6);
+    const geo = boxUV(new THREE.ExtrudeGeometry(sh, { depth: thickness, bevelEnabled: false }).translate(0, 0, zc - thickness / 2), 1.9);
     const m = new THREE.Mesh(geo, mat);
     m.castShadow = true;
     m.receiveShadow = true;
