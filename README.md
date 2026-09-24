@@ -117,3 +117,13 @@ promo/                the promo video: frame capture (Playwright) and edit (Remo
 - Rendering: [three.js](https://threejs.org/) (MIT).
 - Music: "Abandoned Mystical Forest" by BFCMUSIC ([bfcmusic.me](https://bfcmusic.me)), via
   Pixabay under the Pixabay Content License.
+
+## License
+
+The code is released under the [MIT License](LICENSE). That covers everything in this
+repository except:
+
+- **The music** (`audio/abandoned-mystical-forest.mp3`, also heard in the promo video) is by
+  BFCMUSIC and used under the [Pixabay Content License](https://pixabay.com/service/license-summary/),
+  not the MIT License. To reuse it, get it from Pixabay under their terms.
+- **three.js** (`vendor/three/`) keeps its own MIT licence; see `vendor/three/LICENSE`.
