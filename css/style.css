@@ -101,6 +101,23 @@ body.ready .controls { opacity: 1; transform: translate(-50%, 0); }
 .controls button[aria-pressed="true"] { color: var(--gold); background: rgba(217, 179, 106, 0.16); }
 .controls svg { width: 18px; height: 18px; fill: currentColor; flex: none; }
 
+/* small link to the source, at the end of the bar */
+.controls .repo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: 2px;
+  border-left: 1px solid rgba(217, 179, 106, 0.18);
+  border-radius: 0 999px 999px 0;
+  color: rgba(233, 220, 192, 0.5);
+  transition: color 0.2s;
+}
+.controls .repo:hover { color: var(--gold); }
+.controls .repo:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
+.controls .repo svg { width: 16px; height: 16px; }
+
 .controls .icon-play { display: none; }
 .controls button[data-action="pause"][aria-pressed="true"] .icon-play { display: inline; }
 .controls button[data-action="pause"][aria-pressed="true"] .icon-pause { display: none; }
