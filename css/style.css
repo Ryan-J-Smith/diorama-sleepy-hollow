@@ -226,6 +226,11 @@ body.ready .help.shown { opacity: 1; transform: none; }
   cursor: pointer;
 }
 .help-ok:hover, .help-ok:focus-visible { background: rgba(217, 179, 106, 0.18); outline: none; }
+/* a quiet maker's credit beside the button */
+.help-foot { display: flex; align-items: center; gap: 12px; }
+.help-credit { margin: 0; font-size: 12px; font-style: italic; color: rgba(233, 220, 192, 0.45); }
+.help-credit a { color: rgba(217, 179, 106, 0.75); text-decoration: none; border-bottom: 1px solid rgba(217, 179, 106, 0.3); }
+.help-credit a:hover, .help-credit a:focus-visible { color: var(--gold); border-bottom-color: var(--gold); outline: none; }
 /* touch devices get finger wording; mouse users get mouse wording + keys */
 body.touch .help .only-mouse,
 body:not(.touch) .help .only-touch { display: none; }

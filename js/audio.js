@@ -2,7 +2,7 @@
 // used under the Pixabay Content License.
 //
 // Browsers only allow sound after the visitor interacts with the page, so the
-// music starts from the "Wind the clockwork" button on the title card. Web
+// music starts from the "Open the case" button on the title card. Web
 // Audio is used (rather than an <audio> element) so the track loops without a
 // gap and fades smoothly, including on iOS.
 

@@ -1,5 +1,5 @@
 // Entry point: builds the diorama piece by piece behind the loading card, then
-// runs the clockwork.
+// sets it running.
 
 import * as THREE from 'three';
 import { QUALITY, CAPTURE, CAPTURE_SIZE } from './config.js';
@@ -159,8 +159,8 @@ async function main() {
   renderer.compile(scene, camera);
   await nextFrame();
 
-  // Browsers only allow sound after a click or tap, so the visitor "winds the
-  // clockwork" to reveal the diorama and start the music.
+  // Browsers only allow sound after a click or tap, so the visitor "opens the
+  // case" to reveal the diorama and start the music.
   const enter = document.getElementById('enter');
   // Let the visitor see (and change) the music choice before anything plays.
   const musicChoice = document.getElementById('enter-music');
@@ -190,5 +190,5 @@ async function main() {
 main().catch((err) => {
   console.error(err);
   loader.classList.add('error');
-  loaderStep.textContent = 'The clockwork jammed — this browser may not support WebGL 2.';
+  loaderStep.textContent = 'The diorama could not start — this browser may not support WebGL 2.';
 });

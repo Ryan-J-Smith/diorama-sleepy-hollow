@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>The Legend of Sleepy Hollow</title>
-  <meta name="description" content="A moonlit, mechanical diorama of Washington Irving's Legend of Sleepy Hollow.">
+  <meta name="description" content="A moonlit diorama of Washington Irving's Legend of Sleepy Hollow.">
   <meta name="theme-color" content="#07060a">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='36' r='22' fill='%23e07a1f'/%3E%3Crect x='29' y='8' width='6' height='10' rx='2' fill='%23553b1b'/%3E%3Cpath d='M20 32l6-6 6 6zM32 32l6-6 6 6z' fill='%23ffd36b'/%3E%3Cpath d='M20 44q12 8 24 0l-4 2-4-3-4 3-4-3-4 3z' fill='%23ffd36b'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -42,7 +42,7 @@
   </header>
 
   <nav class="controls" id="controls" aria-label="Diorama controls">
-    <button type="button" data-action="pause" aria-pressed="false" title="Stop or start the clockwork">
+    <button type="button" data-action="pause" aria-pressed="false" title="Pause or resume the scene">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path class="icon-pause" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/><path class="icon-play" d="M8 5l11 7-11 7z"/></svg>
       <span class="label">Pause</span>
     </button>
@@ -93,7 +93,10 @@
     </ul>
     <p class="help-tip"><strong>Follow</strong> keeps the chase in view; <strong>Reset</strong> brings you back to the start. Look closely &mdash; there&rsquo;s plenty hiding in the hollow.</p>
     <p class="help-keys only-mouse">Keys: <kbd>Space</kbd> pause &middot; <kbd>F</kbd> follow &middot; <kbd>M</kbd> music &middot; <kbd>R</kbd> reset &middot; <kbd>H</kbd> help</p>
-    <button type="button" class="help-ok">Got it</button>
+    <div class="help-foot">
+      <p class="help-credit">Made by <a href="https://www.linkedin.com/in/ryanjsmithphd/" target="_blank" rel="noopener">Ryan Smith</a> &amp; Claude Opus</p>
+      <button type="button" class="help-ok">Got it</button>
+    </div>
   </aside>
 
   <div class="loader" id="loader" role="status" aria-live="polite">
@@ -104,7 +107,7 @@
       </blockquote>
       <div class="loader-bar"><span id="loader-fill"></span></div>
       <p class="loader-step" id="loader-step">Opening the case&hellip;</p>
-      <button type="button" class="enter" id="enter" hidden>Wind the clockwork</button>
+      <button type="button" class="enter" id="enter" hidden>Open the case</button>
       <button type="button" class="enter-music" id="enter-music" aria-pressed="true" hidden>
         <span class="note" aria-hidden="true">&#9834;</span>
         <span class="state">Soft music on</span>
@@ -124,7 +127,7 @@
       var step = document.getElementById('loader-step');
       window.__loaderSlow = setTimeout(function () {
         if (!loader.classList.contains('started')) {
-          step.textContent = 'Fetching the clockwork\u2026 the first visit can take a moment.';
+          step.textContent = 'Fetching the diorama\u2026 the first visit can take a moment.';
         }
       }, 3500);
       window.__loaderFailed = function () {
