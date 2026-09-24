@@ -39,7 +39,7 @@ export class CaseControls {
     c.minDistance = 1.5;
     c.maxDistance = 70;
     c.maxPolarAngle = Math.PI * 0.53;
-    c.autoRotateSpeed = 0.35;
+    c.autoRotateSpeed = 0;
     this.controls = c;
 
     const margin = 0.28;
@@ -58,7 +58,12 @@ export class CaseControls {
     this.targetBounds = new THREE.Box3(new THREE.Vector3(-8.8, 0.3, -5.2), new THREE.Vector3(8.8, 3.6, 5.2));
     this.minCameraY = TABLE_Y + 0.6;
 
+    // Turntable: resumes shortly after the visitor lets go, easing up to a
+    // slow display-case turn (about 75 s per revolution).
     this.turntable = true;
+    this.turnDelay = 2.5; // seconds idle before turning again
+    this.turnSpeed = 0.8; // OrbitControls units: 2 = 30 s per revolution
+    this.turnRamp = 0;
     this.idleTime = 0;
     this.follow = null; // () => Vector3 | null
     this.interacting = false;
@@ -113,7 +118,11 @@ export class CaseControls {
     }
 
     this.idleTime += dt;
-    c.autoRotate = this.turntable && !this.interacting && this.idleTime > 6 && !this.flight;
+    const turning = this.turntable && !this.interacting && this.idleTime > this.turnDelay && !this.flight;
+    this.turnRamp = turning ? Math.min(1, this.turnRamp + dt / 1.5) : 0;
+    const ease = this.turnRamp * this.turnRamp * (3 - 2 * this.turnRamp);
+    c.autoRotate = this.turnRamp > 0;
+    c.autoRotateSpeed = this.turnSpeed * ease;
 
     c.update(dt);
     this.constrain();
